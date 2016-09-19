@@ -1,2 +1,27 @@
 # MultiEqOptimizer
-Creates d-efficient designs that are optimized across multiple supplied equations
+=======
+
+MultiEqOptimizer is a package that contains functions used to create single experimental designs jointly optimized for multiple candidate models as described in:
+
+http://dx.doi.org/10.1080/00401706.2012.746207
+
+ Contains functions for linear regression and discrete choice conditional logistic models.
+
+## Installation
+
+```R
+devtools::install_github('taalbrecht/MultiEqOptimizer')
+```
+
+## Documentation
+
+See the [documentation site](https://rstudio.github.io/profvis/).
+
+## Example
+
+TBD
+
+```R
+
+})
+```
