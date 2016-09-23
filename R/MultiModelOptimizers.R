@@ -427,7 +427,7 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
 
     #Calculate initial D-error for randomly seeded model
-    eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)
+    eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
 
     #Calculate starting objective function using vector of weights
     if(missing(weight))
@@ -454,7 +454,7 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
           rownums[i] <- j
 
           #Calculate D-efficiencies for ModelMatReal with new temporary point
-          eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)
+          eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
 
           #Calculate new objective function value using vector of weights and temporary point
           if(missing(weight))
@@ -484,8 +484,12 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
   #colnames(eff_vect_final) <- input_formulas #Name efficiency vector formulas
 
   #Name final output
-  outputfinal <- list(data.frame(Question = altvect, ModelMatReal), eff_vect_final, obj_current)
-  names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
+  outputfinal <- list("ModelMatrix" = data.frame(Question = altvect, ModelMatReal),
+  "Deff" = unlist(eff_vect_final[1,]),
+  "DeffvsOptimal" = unlist(eff_vect_final[1,])/det_ref_list,
+  "CovorCorrList" = eff_vect_final[2,],
+  "ObjectiveFunction" = obj_current)
+  #names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
 
   #Return model matrix, objective function value, and 1/D-optimality for add, mech model
 
