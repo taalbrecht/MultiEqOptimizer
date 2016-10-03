@@ -1,3 +1,30 @@
+############################Convert to sum contrasts while preserving factor order####################
+
+#Converts a contrast to contrast sum while preserving factor order and applying appropriate column names
+
+#Inputs
+#factorin - vector of factor values
+#speclevels - vector of factor level names in desired order
+
+#Output
+#vector as a factor with contrast sum encoding that respects the order in speclevels
+
+customcontrsum <- function(factorin, speclevels){
+
+      #Correct factor levels to proper order
+  factorin <- factor(factorin, levels = speclevels)
+
+      #Apply contrast sum encoding
+      contrasts(factorin) <- contr.sum(nlevels(factorin))
+
+      #Apply contrast column names
+      colnames(contrasts(factorin)) <- rownames(contrasts(factorin))[1:ncol(contrasts(factorin))]
+
+      return(factorin)
+
+}
+
+
 #################################Standardize Columns in Matrix Function##########################
 
 #Calculates: Standardizes (from {-1 to 1}) or reverses standardization of list of column names in matrix
@@ -99,8 +126,12 @@ list_input_variables <- function(input_formula){
 
 algebraic_range <- function(base_var_range, algebraic_formula){
 
-  #Pull names of each algebraic term on input side of formula
-  algebraic_input_terms <- colnames(attr(terms(algebraic_formula),"factors"))
+#   #Old code that does not work with factors and continuous variables
+#   #Pull names of each algebraic term on input side of formula
+#   algebraic_input_terms <- colnames(attr(terms(algebraic_formula),"factors"))
+
+  #Pull names of each algebraic term and factor combination on input side of formula
+  algebraic_input_terms <- colnames(model.matrix(algebraic_formula, base_var_range), "factors")[-1]
 
   #Create matrix to store min and max values for each algebraic term
   AlgebraicRange <- matrix(data = 0, nrow = 2, ncol = length(algebraic_input_terms))
@@ -131,13 +162,22 @@ algebraic_range <- function(base_var_range, algebraic_formula){
       return(output)
     }
 
+    #Create expanded grid using all possible combinations of base input variables to use as starting guesses
+
+    trymat <- expand.grid(base_var_range[base_inputs])
+
     #Define vector of minimum and maximum values for base variables used in this algebraic term
     minvect <- as.vector(base_var_range[1,base_inputs])
     maxvect <- as.vector(base_var_range[2,base_inputs])
 
-    #Find minimum value for algebraic term
-    AlgebraicRange["minimum",algebraic_input_terms[i]] <- optim(minvect, optimfunc, method = "L-BFGS-B", lower = minvect, upper = maxvect)$value
-    AlgebraicRange["maximum",algebraic_input_terms[i]] <- optim(maxvect, optimfunc, method = "L-BFGS-B", lower = minvect, upper = maxvect, control = list(fnscale = -1))$value
+    #Find minimum and maximum values by trying all starting combinations in expanded grid
+    AlgebraicRange["minimum",algebraic_input_terms[i]] <- min(unlist(lapply(apply(trymat, MARGIN = 1, optim, fn = optimfunc, method = "L-BFGS-B", lower = minvect, upper = maxvect), "[", "value")))
+    AlgebraicRange["maximum",algebraic_input_terms[i]] <- max(unlist(lapply(apply(trymat, MARGIN = 1, optim, fn = optimfunc, method = "L-BFGS-B", lower = minvect, upper = maxvect, control = list(fnscale = -1)), "[", "value")))
+
+#     #Old, less accurate code that doesn't find min and max for factor combinations
+#     #Find minimum value for algebraic term
+#     AlgebraicRange["minimum",algebraic_input_terms[i]] <- optim(minvect, optimfunc, method = "L-BFGS-B", lower = minvect, upper = maxvect)$value
+#     AlgebraicRange["maximum",algebraic_input_terms[i]] <- optim(maxvect, optimfunc, method = "L-BFGS-B", lower = minvect, upper = maxvect, control = list(fnscale = -1))$value
   }
 
   #Return Min and Max for Algebraic Functions
