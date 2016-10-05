@@ -532,9 +532,6 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
 return(rowmatch)
 })
 
-
-      for(i in 1:nrow(startingdesign))
-
     }
 
     #Select random row indices from supplied candidate set of model points. Reduce matrix
