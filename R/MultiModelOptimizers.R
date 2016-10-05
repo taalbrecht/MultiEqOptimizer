@@ -261,9 +261,10 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #weight - vector of weighting values to apply to each formula in formulalist. Order of this vector matches order of input formulas. Format = c(0.5,0.25, etc)
 #		if weight is not supplied, function will attempt to maximize lowest d_efficiency using det_ref_list
 #priors - list of known or estimated effect sizes (in model terms). Structure should be a list as follows: list(I(A^2) = 0.23, B = -0.5) where parameter names in list match those in formulas. For attribute parameters, list should be effect size with reference to first factor level. Any effects not provided will be assumed to be equal to zero.
+#startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
+##best practice is to use a design created by this function as a starting desgin for another round of optimization
 
-
-DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Federov"){
+DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Federov", startingdesign = NA){
 
   #Calculate number of model points to use
   model_points <- questions*alts
@@ -285,53 +286,6 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
 
   #Create list of all base input variables used in formulalist
   input_list <- unique(unlist(inputs_only))
-
-  #Old code, moved to individual optimizers below
-#   #Translate all factor or character input columns in base input range to -1 to 1 range for algebraic range finding
-#   base_input_range_numeric <- base_input_range
-#   for(i in 1:ncol(base_input_range)){
-#
-# #     if(is.numeric(base_input_range_numeric[[i]]) == FALSE){
-# #
-# #       base_input_range_numeric[[i]] <- c(-1,1)
-# #
-# #     }
-#
-#     #Expand factor into contrast sum coding for range of -1 to 1 for all variable
-#       base_input_range[,i] <- customcontrsum(base_input_range[,i], levels(base_input_range[,i]))
-#
-#       #Expand coefficients based on number of factor levels
-#       tempframe <- model.matrix(as.formula(paste0("~", colnames(base_input_range)[i])), base_input_range)
-#
-#       #Set min to -1 and max to 1 for all factors
-#       tempframe[1,] <- -1
-#       tempframe[2,] <- 1
-#
-#       #Add expanded factor names to base_input_range_numeric. Exclude intercept column
-#       removecol <- ncol(base_input_range_numeric) + 1
-#       base_input_range_numeric <- cbind.data.frame(base_input_range_numeric, tempframe)[,-removecol]
-#
-#     }
-#
-#   }
-#
-#   #Find min and max range for all base vars and algebraic combinations in formulalist (WARNING: If surface is very complex, THIS MAY FAIL)
-#   list_input_ranges <- lapply(formulalist, algebraic_range, base_var_range = base_input_range_numeric)
-#   all_input_ranges <- data.frame(list_input_ranges)
-#   colnames(all_input_ranges) <- c(unlist(lapply(list_input_ranges,colnames)))
-#   all_input_ranges <- as.matrix(all_input_ranges) #Convert from list to matrix
-#   all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
-#
-# #   #Old code, didn't work for factors
-# #   #Find min and max range for all base vars and algebraic combinations in formulalist (WARNING: If surface is very complex, THIS MAY FAIL)
-# #   list_input_ranges <- lapply(formulalist, algebraic_range, base_var_range = base_input_range_numeric)
-# #     all_input_ranges <- data.frame(base_input_range_numeric, list_input_ranges)
-# #   colnames(all_input_ranges) <- c(colnames(base_input_range), unlist(lapply(list_input_ranges,colnames)))
-# #   all_input_ranges <- as.matrix(all_input_ranges) #Convert from list to matrix
-# #   all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
-
-
-
 
   #Create list of one-sided expressions of input only side for all formulas in formulalist
   input_formulas <- sapply(formulalist, nlme::splitFormula)
@@ -396,17 +350,9 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
 
     for(i in 1:ncol(base_input_range)){
 
-      #     if(is.numeric(base_input_range_numeric[[i]]) == FALSE){
-      #
-      #       base_input_range_numeric[[i]] <- c(-1,1)
-      #
-      #     }
 
       #Expand factor into contrast sum coding for range of -1 to 1 for all variables
       if(is.numeric(base_input_range_numeric[[i]]) == FALSE){
-
-#         #Check factor levels in base_input_range against supplied mesh value
-#         base_input_range_numeric[,i] <- customcontrsum(factorin = base_input_range[,i], speclevels = stepseq[[i]])
 
         #Expand coefficients based on number of factor levels
         tempframe <- model.matrix(as.formula(paste0("~", colnames(base_input_range)[i])), base_input_range)
@@ -430,9 +376,16 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
     all_input_ranges <- as.matrix(all_input_ranges) #Convert from list to matrix
     all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
 
-    #Create random model matrix using base vars (standardized {-1 to 1}) to start optimization function and assign input names to columns
+    if(is.na(startingdesign) == TRUE){
+    #Create random model matrix using base vars to start optimization function and assign input names to columns
     ModelMatReal <- data.frame(lapply(stepseq, sample, size = model_points, replace = TRUE))
     colnames(ModelMatReal) <- input_list
+
+    }else{
+
+      #Use provided design as starting point
+      ModelMatReal <- startingdesign[,input_list]
+    }
 
     #Change coding for all factor columns to contr.sum for proper balancing for d-error
     for(i in 1:ncol(ModelMatReal)){
@@ -481,10 +434,6 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
             #Replace current value in ModelMatReal with new temporary point
             oldvalue <- ModelMatReal[i,j]
             ModelMatReal[i,j] <- s
-
-#             #Calculate D-efficiencies for ModelMatStand with new temporary point
-#             ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE) #Convert to real numbers before passing to d_efficiency
-#             eff_vect <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
 
             #Expand model matrix for each formula
             candexpand <- lapply(formulalist, model.matrix, data = ModelMatReal)
@@ -566,9 +515,30 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
       candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
     }
 
+    if(is.na(startingdesign) == TRUE){
+
+      #Select random row indices from supplied candidate set of model points. Reduce matrix
+      rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
+
+    }else{
+
+      #Find corresponding rows based on starting design
+      rownums <- apply(startingdesign[,input_list], MARGIN = 1, function(x){
+
+        rowmatch <- sapply(input_list, function(y) candset[,y] == x[[y]])
+        rowmatch <- which(apply(rowmatch, MARGIN = 1, prod) == 1)
+        rowmatch <- rowmatch[1]
+
+return(rowmatch)
+})
+
+
+      for(i in 1:nrow(startingdesign))
+
+    }
+
     #Select random row indices from supplied candidate set of model points. Reduce matrix
     rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
-    #ModelMatReal <- candset[sample(nrow(candset),size = model_points, replace = TRUE),]
 
     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
