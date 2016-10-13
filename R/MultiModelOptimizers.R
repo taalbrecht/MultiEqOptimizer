@@ -335,7 +335,7 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
     #Apply contrast sum encoding to base_input_range
     for(i in 1:ncol(base_input_range)){
 
-      if(is.numeric(base_input_range_numeric[[i]]) == FALSE){
+      if(is.numeric(base_input_range[[i]]) == FALSE){
 
         #Check factor levels in base_input_range against supplied mesh value
 
