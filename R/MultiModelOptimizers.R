@@ -308,9 +308,20 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
 
       #For numeric values, create steps based on mesh value from minimum supplied value to maximum supplied value
       if(is.numeric(base_input_range[[input_list[[i]]]]) == TRUE){
+        
+        #If the length of the mesh entry is equal to 1, it refers to the number of steps to break the search into.
+        if(length(mesh[[i]]) == 1){
         step <- (max(base_input_range[[input_list[[i]]]]) - min(base_input_range[[input_list[[i]]]]))/(mesh[[i]]-1)
 
         stepseq[[i]] <- seq(min(base_input_range[[input_list[[i]]]]),max(base_input_range[[input_list[[i]]]]), by = step)
+        }
+        
+        #If the length of the mesh entry is greater than 1, it is interpreted as a vector of valid values to use in the search
+        if(length(mesh[[i]]) > 1){
+          
+          stepseq[[i]] <- mesh[[i]]
+          
+        }
 
       }
 

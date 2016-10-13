@@ -35,7 +35,10 @@ TRUE/FALSE - whether to include an opt-out in each question set (e.g. "Neither")
 List of reference maximum information matrix determinants for each formula in formulalist. Order of this list matches order of input formulas. Format = list(200, 216, ...)
 }
   \item{mesh}{
-The number of steps each input factor is broken into for the optimization algorithm. Can be supplied as a single value where it will be applied to all variables or as a vector with a mesh size for each variable. Required for Gibbs sampling but not for Federov sampling.
+This is required for Gibbs sampling and represents the number of steps each input factor is broken into for the optimization algorithm. Can be supplied in the following formats:
+1. As a single value where it will be applied to all continuous variables which is interpreted as the number of steps to break each continuous variable into.
+2. As a list with a single mesh size for each variable. It is then is interpreted as the number of steps to break each continuous variable into.
+3. As a list of vectors with one vector for each variable. In this format the vector is interpreted as a list of all valid values for each variable.
 }
   \item{tolerance}{
 Numeric value indicating the minimum change in optimality criterion needed to terminate optimization function.
