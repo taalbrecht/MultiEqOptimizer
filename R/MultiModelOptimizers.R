@@ -264,7 +264,7 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
 ##best practice is to use a design created by this function as a starting desgin for another round of optimization
 
-DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Federov", startingdesign = NA){
+DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Federov", startingdesign = NULL){
 
   #Calculate number of model points to use
   model_points <- questions*alts
@@ -376,7 +376,7 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
     all_input_ranges <- as.matrix(all_input_ranges) #Convert from list to matrix
     all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
 
-    if(is.na(startingdesign) == TRUE){
+    if(is.null(startingdesign) == TRUE){
     #Create random model matrix using base vars to start optimization function and assign input names to columns
     ModelMatReal <- data.frame(lapply(stepseq, sample, size = model_points, replace = TRUE))
     colnames(ModelMatReal) <- input_list
@@ -515,7 +515,7 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
       candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
     }
 
-    if(is.na(startingdesign) == TRUE){
+    if(is.null(startingdesign) == TRUE){
 
       #Select random row indices from supplied candidate set of model points. Reduce matrix
       rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
@@ -534,8 +534,8 @@ return(rowmatch)
 
     }
 
-    #Select random row indices from supplied candidate set of model points. Reduce matrix
-    rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
+#     #Select random row indices from supplied candidate set of model points. Reduce matrix
+#     rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
 
     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
@@ -601,7 +601,7 @@ return(rowmatch)
   outputfinal <- list("ModelMatrix" = data.frame(Question = altvect, ModelMatReal),
                       "Deff" = unlist(eff_vect_final[1,]),
                       "DeffvsOptimal" = unlist(eff_vect_final[1,])/det_ref_list,
-                      "CovorCorrList" = eff_vect_final[2,],
+                      "CovList" = eff_vect_final[2,],
                       "ObjectiveFunction" = obj_current)
   #names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
 

@@ -18,20 +18,17 @@ vcovpower <- function(vcovmat, detectdiff, test_alpha = 0.05, test_beta = 0.2){
 
   #If a single value is supplied for test_alpha, copy that to a vector equal to the number of effects
   if(length(test_alpha) == 1){
-    test_alpha <- rep(test_alpha, ncol(CurrentMatrix))
+    test_alpha <- rep(test_alpha, ncol(vcovmat))
   }
 
   #If a single value is supplied for beta, copy that to a vector equal to the number of effects
   if(length(test_beta) == 1){
-    test_beta <- rep(test_beta, ncol(CurrentMatrix))
+    test_beta <- rep(test_beta, ncol(vcovmat))
   }
 
   #Transform alpha and beta power values to quantile functions
   z_one_minus_alpha<-qnorm(1-test_alpha)
   z_one_minus_beta<-qnorm(1-test_beta)
-
-#   #Get variance covariance matrix of conditional logit model for this design
-#   vcovmat <- d_effchoice(CurrentMatrix = CurrentMatrix, altvect = altvect, paramestimates = paramestimates, returncov = TRUE)[["vcov"]]
 
   #Calculate minimum sample size for each coefficient
 

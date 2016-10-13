@@ -121,7 +121,7 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returncov
     info_mat<-info_mat+full_term
   } # end of loop over choice sets
   #get the inverse of the information matrix (i.e., gets the variance-covariance matrix)
-  #Use "try" wrapper to prevent unsolvable matrices from crashing. Return 2x2 diagonal infinite matrix
+  #Use "try" wrapper to prevent unsolvable matrices from crashing. Return 2x2 diagonal infinite matrix on crash
   sigma_beta<- tryCatch(solve(info_mat,diag(ncol(CurrentMatrix))), error = function(x) diag(x = Inf, nrow = 2, ncol = 2))
   #Construct return vector with named elements
 

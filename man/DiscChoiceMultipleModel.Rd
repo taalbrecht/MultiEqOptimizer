@@ -58,6 +58,11 @@ Samples from a supplied matrix of available model points defined by candset.
 Gibbs:
 Samples across the range of each base variable using step sizes defined by mesh input.
 }
+
+  \item{startingdesign}{
+Optional. Design to use as a starting point for optimization. Format is a data frame with one column for each base input variable and the proper number of rows corresponding to the number of model points. If not provided, a random starting design will be created.
+}
+
 }
 \details{
 %%  ~~ If necessary, more details than the description above ~~
@@ -65,16 +70,24 @@ Samples across the range of each base variable using step sizes defined by mesh 
 \value{
 Returns a list:
 
-  \item{ModelMat}{
-Matrix containing the single experiment optimized for all input formulas.
+  \item{ModelMatrix}{
+Matrix containing the single experiment optimized for all input formulas
 }
 
-  \item{D-Efficiency}{
-List of D-efficiency and variance-covariance matrix for each input formula.
+  \item{Deff}{
+List of d-efficiency values for each formula
+}
+
+  \item{DeffvsOptimal}{
+List of d-efficiency values for each formula divided by the optimal d-efficiency for each formula (supplied as det_ref_list in the input of this function)
+}
+
+  \item{CovList}{
+List of the covariance matrix for each formula
 }
 
   \item{ObjectiveFunction}{
-Final value of the objective function.
+Final value of the objective function
 }
 }
 \references{
