@@ -19,14 +19,14 @@
 #mesh - number of steps each factor broken into for optimization algorithm. Can be supplied as a single value where it will be applied to all variables or as a vector with a mesh size for each variable
 #tolerance - minimum change in optimality criterion needed to terminate optimization function. Must be greater than 0
 #det_ref_list - list of reference max determinants for each formula in formulalist. Order of this list matches order of input formulas. Format = list(200, 216, etc...)
-#searchstyle - option for searching experimental space. "Federov" samples from a supplied matrix of available designs (candset). "Gibbs" samples across the range of each base variable by step sizes defined by mesh.
-#candset - set of candidate points to search through for model creation. This is required if "Federov" searchstyle is used but is not used otherwise
+#searchstyle - option for searching experimental space. "Fedorov" samples from a supplied matrix of available designs (candset). "Columnwise" samples across the range of each base variable by step sizes defined by mesh.
+#candset - set of candidate points to search through for model creation. This is required if "Fedorov" searchstyle is used but is not used otherwise
 
 #Inputs, optional:
 #weight - vector of weighting values to apply to each formula in formulalist. Order of this vector matches order of input formulas. Format = c(0.5,0.25, etc)
 #		if weight is not supplied, function will attempt to maximize lowest d_efficiency using det_ref_list
 
-CEX_MultipleModel <- function(base_input_range, formulalist, model_points, blocks = NA, det_ref_list, mesh, tolerance, weight, candset = NA, searchstyle = "Federov"){
+CEX_MultipleModel <- function(base_input_range, formulalist, model_points, blocks = NA, det_ref_list, mesh, tolerance, weight, candset = NA, searchstyle = "Fedorov"){
 
   #Determine step number based on mesh input and construct sequence from -1 to 1 by step size
   # step <- 2/(mesh-1)
@@ -50,9 +50,9 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
   #Create list of one-sided expressions of input only side for all formulas in formulalist
   input_formulas <- sapply(formulalist, nlme::splitFormula)
 
-  #Optimize via Gibbs search if that option is selected
+  #Optimize via Columnwise search if that option is selected
 
-  if(searchstyle == "Gibbs"){
+  if(searchstyle == "Columnwise"){
     #If mesh supplied as a single value, apply it to all base input values
     if(length(mesh) == 1){
 
@@ -142,7 +142,7 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 
   }
 
-  if(searchstyle == "Federov"){
+  if(searchstyle == "Fedorov"){
 
     #Reduce candidate set to only include base variables in the supplied formulas to eliminate extraneous data
     candset <- candset[,input_list]
@@ -254,8 +254,8 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #mesh - number of steps each factor broken into for optimization algorithm. Can be supplied as a single value where it will be applied to all variables or as a list with a mesh size for each numeric variable and a list of valid factor levels for each categorical variable
 #tolerance - minimum change in optimality criterion needed to terminate optimization function. Must be greater than 0
 #det_ref_list - list of reference max determinants for each formula in formulalist. Order of this list matches order of input formulas. Format = list(200, 216, etc...)
-#searchstyle - option for searching experimental space. "Federov" samples from a supplied matrix of available designs (candset). "Gibbs" samples across the range of each base variable by step sizes defined by mesh.
-#candset - set of candidate points to search through for model creation. This is required if "Federov" searchstyle is used but is not used otherwise
+#searchstyle - option for searching experimental space. "Fedorov" samples from a supplied matrix of available designs (candset). "Columnwise" samples across the range of each base variable by step sizes defined by mesh.
+#candset - set of candidate points to search through for model creation. This is required if "Fedorov" searchstyle is used but is not used otherwise
 
 #Inputs, optional:
 #weight - vector of weighting values to apply to each formula in formulalist. Order of this vector matches order of input formulas. Format = c(0.5,0.25, etc)
@@ -264,7 +264,7 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
 ##best practice is to use a design created by this function as a starting desgin for another round of optimization
 
-DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Federov", startingdesign = NULL){
+DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL){
 
   #Calculate number of model points to use
   model_points <- questions*alts
@@ -290,8 +290,22 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
   #Create list of one-sided expressions of input only side for all formulas in formulalist
   input_formulas <- sapply(formulalist, nlme::splitFormula)
 
-  #Optimize via Gibbs search if that option is selected
-  if(searchstyle == "Gibbs"){
+  #If eqtype is not populated, assume all equations are choice equations
+  if(is.null(eqtype) == TRUE){
+
+    eqtype <- rep("Choice", length(formulalist))
+
+  }
+
+  #Create vector of choice equation numbers
+  choiceeqs <- which(eqtype == "Choice")
+
+  #Create vector of linear equation numbers
+  lineareqs <- which(eqtype == "Linear")
+
+
+  #Optimize via Columnwise search if that option is selected
+  if(searchstyle == "Columnwise"){
 
     #If mesh supplied as a single value, apply it to all base input values
     if(length(mesh) == 1){
@@ -308,19 +322,19 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
 
       #For numeric values, create steps based on mesh value from minimum supplied value to maximum supplied value
       if(is.numeric(base_input_range[[input_list[[i]]]]) == TRUE){
-        
+
         #If the length of the mesh entry is equal to 1, it refers to the number of steps to break the search into.
         if(length(mesh[[i]]) == 1){
         step <- (max(base_input_range[[input_list[[i]]]]) - min(base_input_range[[input_list[[i]]]]))/(mesh[[i]]-1)
 
         stepseq[[i]] <- seq(min(base_input_range[[input_list[[i]]]]),max(base_input_range[[input_list[[i]]]]), by = step)
         }
-        
+
         #If the length of the mesh entry is greater than 1, it is interpreted as a vector of valid values to use in the search
         if(length(mesh[[i]]) > 1){
-          
+
           stepseq[[i]] <- mesh[[i]]
-          
+
         }
 
       }
@@ -418,8 +432,21 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
     #Standardize numeric columns
     candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
 
-    #Calculate initial D-error for randomly seeded model
-    eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x) x[,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+
+#Initialize efficiency vector
+eff_vect <- rep(0, length(formulalist))
+
+    #Calculate initial D-efficiency for randomly seeded model for Choice equations
+if(length(choiceeqs) > 0){
+eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+}
+
+#Calculate d-efficiency for linear equations
+if(length(lineareqs) > 0){
+
+  eff_vect[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple)/det_ref_list[lineareqs]
+
+}
 
     #Calculate starting objective function using vector of weights
     if(missing(weight))
@@ -452,9 +479,21 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
             #Standardize numeric columns
             candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
 
-            #Calculate D-efficiency
-            eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x) x[,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+            ##Old method that only considered one form of d-efficiency
+#             #Calculate D-efficiency
+#             eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x) x[,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
 
+            #Calculate d-efficiency for choice models
+            if(length(choiceeqs) > 0){
+              eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+            }
+
+            #Calculate d-efficiency for linear models
+            if(length(lineareqs) > 0){
+
+              eff_vect[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple)/det_ref_list[lineareqs]
+
+            }
 
             #Calculate new objective function value using vector of weights and temporary point
             if(missing(weight))
@@ -480,11 +519,32 @@ DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, al
     #Standardize numeric columns
     candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
 
-    #Calculate final D-efficiencies
-    eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x) x[,2:ncol(x)]), paramestimates = priors, altvect = altvect, returncov = TRUE)
+    #Initialize final d-efficiency and covariance lists
+    eff_vect_final <- as.list(eff_vect)
+
+    cov_vect_final <- as.list(rep(0, length(formulalist)))
+
+    #Calculate final d-efficiency for choice models
+    if(length(choiceeqs) > 0){
+
+      #Calculate final d-efficiency
+      eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
+      #Calculate final covlist
+      cov_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returncov = TRUE)[2,]
+    }
+
+    #Calculate final d-efficiency for linear models
+    if(length(lineareqs) > 0){
+
+      #Calculate final d-efficiency
+      eff_vect_final[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple)
+      #Calculate final covlist
+      cov_vect_final[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple, returncov = TRUE)[2,]
+
+    }
   }
 
-  if(searchstyle == "Federov"){
+  if(searchstyle == "Fedorov"){
 
     #Reduce candidate set to only include base variables in the supplied formulas to eliminate extraneous data
     candset <- candset[,input_list]
@@ -551,8 +611,23 @@ return(rowmatch)
     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
 
-    #Calculate initial D-error for randomly seeded model
-    eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+#Initialize efficiency vector
+eff_vect <- rep(0, length(formulalist))
+# #Original single equation type code
+#     #Calculate initial D-error for randomly seeded model
+#     eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+
+    #Calculate initial d-efficiency for both model types
+    if(length(choiceeqs) > 0){
+
+      #Calculate choice d-efficiency
+      eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+    }
+    if(length(lineareqs) > 0){
+
+      #Calculate linear d-efficiency
+      eff_vect[lineareqs] <- sapply(lapply(candexpand[lineareqs], function(x, rowind = rownums) x[rowind,]), d_efficiencysimple)/det_ref_list[lineareqs]
+    }
 
     #Calculate starting objective function using vector of weights
     if(missing(weight))
@@ -578,8 +653,22 @@ return(rowmatch)
           oldvalue <- rownums[i]
           rownums[i] <- j
 
+#           #Old single equation type code
+#           #Calculate D-efficiencies for ModelMatReal with new temporary point
+#           eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+
           #Calculate D-efficiencies for ModelMatReal with new temporary point
-          eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+          if(length(choiceeqs) > 0){
+
+            #Calculate choice d-efficiency
+            eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+          }
+
+          if(length(lineareqs) > 0){
+
+            #Calculate linear d-efficiency
+            eff_vect[lineareqs] <- sapply(lapply(candexpand[lineareqs], function(x, rowind = rownums) x[rowind,]), d_efficiencysimple)/det_ref_list[lineareqs]
+          }
 
           #Calculate new objective function value using vector of weights and temporary point
           if(missing(weight))
@@ -601,18 +690,42 @@ return(rowmatch)
     #Convert final matrix to real values
     ModelMatReal <- candset[rownums,]
 
-    #Calculate final d-efficiency
-    eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect, returncov = TRUE)
+#     #Old code for single equation type
+#     #Calculate final d-efficiency
+#     eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect, returncov = TRUE)
 
+    #Initialize final d-efficiency and covariance lists
+    eff_vect_final <- as.list(eff_vect)
+
+    cov_vect_final <- as.list(rep(0, length(formulalist)))
+
+    #Calculate final d-efficiency for choice models
+    if(length(choiceeqs) > 0){
+
+      #Calculate final d-efficiency
+      eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
+      #Calculate final covlist
+      cov_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returncov = TRUE)[2,]
+    }
+
+    #Calculate final d-efficiency for linear models
+    if(length(lineareqs) > 0){
+
+      #Calculate final d-efficiency
+      eff_vect_final[lineareqs] <- sapply(lapply(candexpand[lineareqs], function(x, rowind = rownums) x[rowind,]), d_efficiencysimple)
+      #Calculate final covlist
+      cov_vect_final[lineareqs] <- sapply(lapply(candexpand[lineareqs], function(x, rowind = rownums) x[rowind,]), d_efficiencysimple, returncov = TRUE)[2,]
+
+    }
   }
 
   #colnames(eff_vect_final) <- input_formulas #Name efficiency vector formulas
 
   #Name final output
   outputfinal <- list("ModelMatrix" = data.frame(Question = altvect, ModelMatReal),
-                      "Deff" = unlist(eff_vect_final[1,]),
-                      "DeffvsOptimal" = unlist(eff_vect_final[1,])/det_ref_list,
-                      "CovList" = eff_vect_final[2,],
+                      "Deff" = unlist(eff_vect_final),
+                      "DeffvsOptimal" = unlist(eff_vect_final)/det_ref_list,
+                      "CovList" = cov_vect_final,
                       "ObjectiveFunction" = obj_current)
   #names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
 

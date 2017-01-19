@@ -2,29 +2,34 @@
 #Calculates determinant of supplied model matrix and scales to d-efficiency
 
 #Output: vector(d_eff,det_calc) where:
-#d_eff - d-efficiency of
-#det_calc - determinanat of info matrix created using CurrentMatrix and input_formula
+#d_eff - d-efficiency of model matrix assuming linear model
 
 #Inputs:
 #CurrentMatrix - model matrix with appropriate factor numerical coding as created by the model.matrix function. Data.frame formats not accepted
 
-d_efficiencysimple <- function(CurrentMatrix, det_ref){
+d_efficiencysimple <- function(CurrentMatrix, returncov = FALSE){
 
+  #Calculate information matrix
+  infomat <- t(CurrentMatrix)%*%CurrentMatrix
   #Calculate determinant of information matrix
-  det_calc <- det(t(CurrentMatrix)%*%CurrentMatrix)
+  det_calc <- det(infomat)
 
   #Set determinants equal to zero if less than zero due to R not being able to precisely calculate determinant
   if(det_calc < 0){det_calc <- 0}
 
-  #Calculate ratio of current determinant to optimal determinanat for additive and mechanistic model
-  d_eff <- ((det_calc/det_ref)^(1/(ncol(CurrentMatrix))))
+  #Calculate d-efficiency
+  d_eff <- ((det_calc)^(1/(ncol(CurrentMatrix))))/nrow(CurrentMatrix)
 
-  #Construct return vector with named elements
-  returnvect <- c(d_eff, det_calc)
-  names(returnvect) <- c("D efficiency", "Info Matrix Determinant")
+  if(returncov == TRUE){
+
+    #Calculate variance-covariance matrix
+    vocvmat <- tryCatch(solve(infomat), error = function(x) diag(x = Inf, nrow = 2, ncol = 2))
+    output <- list(d_eff = d_eff, vcov = vocvmat)
+
+  }else{output <- d_eff}
 
   #Return objective function and determinants for both current models
-  return(returnvect)}
+  return(output)}
 
 ###########################################################################################
 
@@ -127,9 +132,9 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returncov
 
   if(returncov == TRUE){
 
-    output <- list(d_eff = det(sigma_beta)^(-1/ncol(CurrentMatrix)), vcov = sigma_beta)
+    output <- list(d_eff = det(info_mat)^(1/ncol(CurrentMatrix)), vcov = sigma_beta)
 
-  }else{output <- det(sigma_beta)^(-1/ncol(CurrentMatrix))}
+  }else{output <- det(info_mat)^(1/ncol(CurrentMatrix))}
 
   #Return objective function and determinants for both current models
   #return(list(d_eff = det(sigma_beta)^(-1/ncol(CurrentMatrix)), vcov = sigma_beta))}

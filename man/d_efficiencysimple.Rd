@@ -5,32 +5,25 @@
 Simple d-efficiency calculation for a supplied model matrix
 }
 \description{
-Calculates the d-efficiency of a supplied model matrix (det(M'M)^(1/ncol(ModelMatrix))) and the ratio of the d-efficiency to the optimal d-efficiency
+Calculates the d-efficiency of a supplied model matrix (det(M'M)^(1/ncol(ModelMatrix))) for a linear model
 }
 \usage{
-d_efficiencysimple(CurrentMatrix, det_ref)
+d_efficiencysimple(CurrentMatrix)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{CurrentMatrix}{
 Model matrix with attribute factors coded using contr.sum coding. Matrix must be standardized before passing to function if standardization is desired.
+  \item{returncov}{
+TRUE/FALSE - Value specifying whether to return the variance-covariance matrix. Defaults to FALSE
 }
-  \item{det_ref}{
-Reference optimal d-efficiency for calculating the d-efficiency ratio.
-}
+
 }
 \details{
 %%  ~~ If necessary, more details than the description above ~~
 }
 \value{
-A vector is returned containing:
-  \item{d_eff}{
-  Ratio of the d-efficiency of the supplied model matrix to the optimal model, (det(M'M)/det_ref)^(1/k) where M is the supplied model matrix of the supplied model and  det_ref is the supplied optimal information matrix determinant
-}
-
-  \item{det_calc}{
-  determinanat of supplied model information matrix, det(M'M)
-}
+The d-efficiency is returned based on a linear model
 
 }
 \references{
