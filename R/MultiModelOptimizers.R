@@ -264,7 +264,7 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
 ##best practice is to use a design created by this function as a starting desgin for another round of optimization
 
-DiscChoiceMultipleModel <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL){
+MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL){
 
   #Calculate number of model points to use
   model_points <- questions*alts

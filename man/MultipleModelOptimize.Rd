@@ -1,5 +1,5 @@
-\name{DiscChoiceMultipleModel}
-\alias{DiscChoiceMultipleModel}
+\name{MultipleModelOptimize}
+\alias{MultipleModelOptimize}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Optimize a single experimental design for multiple discrete choice models
