@@ -127,14 +127,19 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returncov
   } # end of loop over choice sets
   #get the inverse of the information matrix (i.e., gets the variance-covariance matrix)
   #Use "try" wrapper to prevent unsolvable matrices from crashing. Return 2x2 diagonal infinite matrix on crash
-  sigma_beta<- tryCatch(solve(info_mat,diag(ncol(CurrentMatrix))), error = function(x) diag(x = Inf, nrow = 2, ncol = 2))
-  #Construct return vector with named elements
+  sigma_beta<- tryCatch(solve(info_mat,diag(ncol(CurrentMatrix))), error = function(x) diag(x = Inf, nrow = ncol(CurrentMatrix), ncol = ncol(CurrentMatrix)))
+
+
+  #Calculate determinant
+  det_calc <- det(info_mat)
+  #If determinant is negative (should not be possible but sometimes happens), return zero to prevent an error
+  if(det_calc < 0){det_calc <- 0}
 
   if(returncov == TRUE){
 
-    output <- list(d_eff = det(info_mat)^(1/ncol(CurrentMatrix)), vcov = sigma_beta)
+    output <- list(d_eff = det_calc^(1/ncol(CurrentMatrix)), vcov = sigma_beta)
 
-  }else{output <- det(info_mat)^(1/ncol(CurrentMatrix))}
+  }else{output <- det_calc^(1/ncol(CurrentMatrix))}
 
   #Return objective function and determinants for both current models
   #return(list(d_eff = det(sigma_beta)^(-1/ncol(CurrentMatrix)), vcov = sigma_beta))}

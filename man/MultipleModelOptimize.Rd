@@ -70,6 +70,14 @@ Optional. Design to use as a starting point for optimization. Format is a data f
 Optional. Vector of model types to assume for d-efficiency calculations. Defaults to choice model but can be set to linear calculation as well. Accepted values are "Choice" and "Linear". Vector length must equal the length of the list of formulas.
 }
 
+  \item{questionblockvars}{
+Optional. Vector of named variables that should be the same for all alternatives within one question set. Currently only functional for Columnwise search strategy.
+}
+
+  \item{augment}{
+Optional. TRUE/FALSE value that specifies whether the model should optimize all points in the design or only new points. To use this option a compatible design must be furnished to the startingdesign argument. In this case, the questions and alts arguments will be assumed to apply to the number of design points that should be ADDED to the design. Default is FALSE.
+}
+
 }
 \details{
 %%  ~~ If necessary, more details than the description above ~~

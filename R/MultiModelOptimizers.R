@@ -264,7 +264,7 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
 ##best practice is to use a design created by this function as a starting desgin for another round of optimization
 
-MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL){
+MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE){
 
   #Calculate number of model points to use
   model_points <- questions*alts
@@ -277,6 +277,21 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
   for(i in 1:questions){
     altvect <- c(altvect, rep(i, alts))
   }
+
+  #Define starting row for new designs as row 1 for both the columnwise and fedorov optimizer below
+  optimizerowstart <- 1
+
+
+if(augment == TRUE){
+  #For designs that will be augmented, add the alternative vector generated above to the existing vector from staringdesign
+  #Format expected for this is a column labeled "Question"
+
+  altvect <- c(startingdesign$Question, altvect + max(startingdesign$Question))
+
+  #Define starting row as row after the starting design
+  optimizerowstart <- nrow(startingdesign)+1
+
+}
 
   #Convert determinant list to vector
   det_ref_list <- unlist(det_ref_list)
@@ -302,7 +317,6 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
   #Create vector of linear equation numbers
   lineareqs <- which(eqtype == "Linear")
-
 
   #Optimize via Columnwise search if that option is selected
   if(searchstyle == "Columnwise"){
@@ -353,18 +367,36 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
         }
 
+        #Add factor levels present in startingdesign that are not in base_input_range or mesh
+        if(is.null(startingdesign) == FALSE){
+
+          levels(stepseq[[i]]) <- c(levels(stepseq[[i]]),
+                                    levels(as.factor(startingdesign[[input_list[[i]]]]))[which(!as.factor(startingdesign[[input_list[[i]]]]) %in% stepseq[[i]])])
+
+        }
+
       }
 
     }
 
-    #Apply contrast sum encoding to base_input_range
+
     for(i in 1:ncol(base_input_range)){
 
+      #Apply contrast sum encoding to base_input_range
       if(is.numeric(base_input_range[[i]]) == FALSE){
 
         #Check factor levels in base_input_range against supplied mesh value
 
-        base_input_range[,i] <- customcontrsum(factorin = base_input_range[,i], speclevels = stepseq[[i]])
+        #base_input_range[,i] <- customcontrsum(factorin = base_input_range[,i], speclevels = stepseq[[i]])
+
+        #New code to handle levels in startingdesign. Note that vector concatenation at end is necessary to preserve order
+        base_input_range[,i] <- customcontrsum(factorin = base_input_range[,i], speclevels = c(paste(stepseq[[i]]), levels(stepseq[[i]])[which(!levels(stepseq[[i]])%in%stepseq[[i]])]))
+      }else{
+
+        ####Finish Here#######Do I actually want to redefine the range based on the previous design? Should we consider leaving base_input_range as is to reflect the new design space?
+        #Expand numeric base input range to include range in startingdesign
+        base_input_range[1,i] <- min(c(base_input_range[1,i], startingdesign[[colnames(base_input_range)[i]]]))
+        base_input_range[2,i] <- max(c(base_input_range[2,i], startingdesign[[colnames(base_input_range)[i]]]))
       }
 
     }
@@ -408,16 +440,25 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
     }else{
 
+      if(augment == TRUE){
+
+        ModelMatReal <- data.frame(lapply(stepseq, sample, size = model_points, replace = TRUE))
+        colnames(ModelMatReal) <- input_list
+
+        ModelMatReal <- rbind.data.frame(startingdesign[,input_list], ModelMatReal)
+
+      }else{
       #Use provided design as starting point
       ModelMatReal <- startingdesign[,input_list]
+      }
     }
 
     #Change coding for all factor columns to contr.sum for proper balancing for d-error
     for(i in 1:ncol(ModelMatReal)){
 
-      if(is.factor(ModelMatReal[,i]) == TRUE){
+      if((is.factor(ModelMatReal[,i]) == TRUE)|(is.character(ModelMatReal[,i]) == TRUE)){
 
-        ModelMatReal[,i] <- customcontrsum(factorin = ModelMatReal[,i], speclevels = stepseq[[i]])
+        ModelMatReal[,i] <- customcontrsum(factorin = ModelMatReal[,i], speclevels = levels(base_input_range[[colnames(ModelMatReal)[i]]]))
 
       }
 
@@ -436,6 +477,21 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 #Initialize efficiency vector
 eff_vect <- rep(0, length(formulalist))
 
+##############################New Code#########################################
+
+#Ensure that blocking variables by question for choice designs are set to the same value across the question choice sets
+if(is.null(questionblockvars) == FALSE){
+  for(i in 1:length(questionblockvars)){
+    for(j in 1:questions){
+
+      ModelMatReal[[questionblockvars]][altvect == j] <- ModelMatReal[[questionblockvars]][altvect == j][1]
+
+    }
+  }
+}
+
+#######################
+
     #Calculate initial D-efficiency for randomly seeded model for Choice equations
 if(length(choiceeqs) > 0){
 eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
@@ -449,8 +505,7 @@ if(length(lineareqs) > 0){
 }
 
     #Calculate starting objective function using vector of weights
-    if(missing(weight))
-    {obj_current <- min(eff_vect)}else{
+    if(missing(weight)){obj_current <- min(eff_vect)}else{
       obj_current <- sum(eff_vect*weight)}
 
     #Initialize objective change value to start while loop
@@ -463,7 +518,7 @@ if(length(lineareqs) > 0){
       obj_prev <- obj_current
 
       #Loop to make single pass through design, one parameter at a time
-      for (i in 1:nrow(ModelMatReal)){
+      for (i in optimizerowstart:nrow(ModelMatReal)){
         for(j in 1:ncol(ModelMatReal)){
 
           #Step through -1 to 1 by step value
@@ -471,7 +526,15 @@ if(length(lineareqs) > 0){
 
             #Replace current value in ModelMatReal with new temporary point
             oldvalue <- ModelMatReal[i,j]
-            ModelMatReal[i,j] <- s
+
+            #Check variables against blocking variable and make sure this value stays the same across this question if it is a blocking variable
+            if((colnames(ModelMatReal)[j] %in% questionblockvars) == FALSE){
+              #Replace only the current point if this is not a blocking variable
+              ModelMatReal[i,j] <- s
+            }else{
+              #Replace all sets in this question if this is a blocking variable
+              ModelMatReal[[questionblockvars]][altvect == altvect[i]] <- s
+            }
 
             #Expand model matrix for each formula
             candexpand <- lapply(formulalist, model.matrix, data = ModelMatReal)
@@ -496,14 +559,20 @@ if(length(lineareqs) > 0){
             }
 
             #Calculate new objective function value using vector of weights and temporary point
-            if(missing(weight))
-            {obj_temp <- min(eff_vect)}else{
+            if(missing(weight)){obj_temp <- min(eff_vect)}else{
               obj_temp <- sum(eff_vect*weight)}
 
             #If objective of new point is greater than or equal to old point, use new point in matrix. Otherwise, put old point back into matrix
-            if(obj_temp < obj_current)
+            if(obj_temp <= obj_current){
 
-            {ModelMatReal[i,j] <- oldvalue}else{
+              if((colnames(ModelMatReal)[j] %in% questionblockvars) == FALSE){
+                #Replace only the current point if this is not a blocking variable
+                ModelMatReal[i,j] <- oldvalue
+              }else{
+                #Replace all sets in this question if this is a blocking variable
+                ModelMatReal[[questionblockvars]][altvect == altvect[i]] <- oldvalue
+              }
+              }else{
               obj_current <- obj_temp}
           }
         }
@@ -549,6 +618,27 @@ if(length(lineareqs) > 0){
     #Reduce candidate set to only include base variables in the supplied formulas to eliminate extraneous data
     candset <- candset[,input_list]
 
+    if(is.null(startingdesign) == FALSE){
+
+      #If there is a starting design provided, combine this design and the candidate set into one candidate set
+      candsetnew <- rbind.data.frame(startingdesign[,input_list], candset)
+
+      #Loop through all factor columns and ensure they are recoded as factors with new levels added as necessary
+      for(i in 1:ncol(candsetnew)){
+
+        if((is.factor(candsetnew[,i]) == TRUE)|(is.character(candsetnew[,i]) == TRUE)){
+
+          candsetnew[,i] <- customcontrsum(factorin = candsetnew[,i], speclevels = c(levels(candset[[colnames(candsetnew)[i]]]),
+                                                                                     levels(as.factor(candsetnew[,i]))[which(!levels(as.factor(candsetnew[,i])) %in% levels(candset[[colnames(candsetnew)[i]]]))]))
+
+        }
+
+      }
+
+      #Use this as candset moving forward
+      candset <- candsetnew
+    }
+
     #Identify all columns that are coded as factors
     factcols <- rep(FALSE, ncol(candset))
 
@@ -589,24 +679,29 @@ if(length(lineareqs) > 0){
     if(is.null(startingdesign) == TRUE){
 
       #Select random row indices from supplied candidate set of model points. Reduce matrix
-      rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
+      rownums <- sample(c(optimizerowstart:nrow(candset)), size = model_points, replace = TRUE)
 
     }else{
 
-      #Find corresponding rows based on starting design
-      rownums <- apply(startingdesign[,input_list], MARGIN = 1, function(x){
+      #If a starting design was provided, use the row numbers of candset as these are equal to startingdesign
+      rownums <- c(1:nrow(startingdesign))
 
-        rowmatch <- sapply(input_list, function(y) candset[,y] == x[[y]])
-        rowmatch <- which(apply(rowmatch, MARGIN = 1, prod) == 1)
-        rowmatch <- rowmatch[1]
+      if(augment == TRUE){
+      #Randomly sample additional points from the supplied candidate set of model points
+        rownums <- c(1:nrow(startingdesign), sample(c(optimizerowstart:nrow(candset)), size = model_points, replace = TRUE))
 
-return(rowmatch)
-})
 
-    }
+#       ##Matching code is no longer necessary as existing points are added in their entirety to the first rows of the candset
+#       for(i in 1:nrow(startingdesign)){
+#
+#         rowmatch <- sapply(input_list, function(y) candset[,y] == startingdesign[i,input_list][[y]])
+#         rowmatch <- which(apply(rowmatch, MARGIN = 1, prod) == 1)
+#         rownums[i] <- as.integer(rowmatch[1])
+#
+#       }
 
-#     #Select random row indices from supplied candidate set of model points. Reduce matrix
-#     rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
+      }
+}
 
     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
@@ -644,10 +739,11 @@ eff_vect <- rep(0, length(formulalist))
       obj_prev <- obj_current
 
       #Loop to make single pass through design, one row at a time
-      for (i in 1:length(rownums)){
+      for (i in optimizerowstart:length(rownums)){
 
-        #Try every possible point in candidate set of points for each row
-        for(j in 1:nrow(candset)){
+        #Try every possible point in candidate set of points supplied by user for each row
+        ##Note that this starts at optimizerowstart to account for the rows that were added to the start of the candidate set when a startingdesign is supplied
+        for(j in optimizerowstart:nrow(candset)){
 
           #Replace current value in ModelMatReal with new temporary point
           oldvalue <- rownums[i]
@@ -675,7 +771,7 @@ eff_vect <- rep(0, length(formulalist))
           {obj_temp <- min(eff_vect)}
           else{obj_temp <- sum(eff_vect*weight)}
 
-          #If objective of new point is greater than or equal to old point, use new point in matrix. Otherwise, put old point back into matrix
+          #If objective of new point is greater than old point, use new point in matrix. Otherwise, put old point back into matrix
           if(obj_temp < obj_current)
 
           {rownums[i] <- oldvalue}
