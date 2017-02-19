@@ -371,7 +371,7 @@ if(augment == TRUE){
         if(is.null(startingdesign) == FALSE){
 
           levels(stepseq[[i]]) <- c(levels(stepseq[[i]]),
-                                    levels(as.factor(startingdesign[[input_list[[i]]]]))[which(!as.factor(startingdesign[[input_list[[i]]]]) %in% stepseq[[i]])])
+                                    levels(as.factor(startingdesign[[input_list[[i]]]]))[which(!levels(as.factor(startingdesign[[input_list[[i]]]])) %in% stepseq[[i]])])
 
         }
 
