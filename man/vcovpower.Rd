@@ -31,7 +31,6 @@ Vector of beta errors to use for each power calculation. Defaults to 0.20.
 \value{
 Data frame with estimated minimum sample size required to estimate each parameter as well as the input values provided by the user for each calculation.
 }
-}
 \references{
 %% ~put references to the literature/web site here ~
 }
