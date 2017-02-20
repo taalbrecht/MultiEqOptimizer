@@ -14,6 +14,7 @@ d_efficiencysimple(CurrentMatrix)
 \arguments{
   \item{CurrentMatrix}{
 Model matrix with attribute factors coded using contr.sum coding. Matrix must be standardized before passing to function if standardization is desired.
+}
   \item{returncov}{
 TRUE/FALSE - Value specifying whether to return the variance-covariance matrix. Defaults to FALSE
 }
