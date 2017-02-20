@@ -264,7 +264,7 @@ CEX_MultipleModel <- function(base_input_range, formulalist, model_points, block
 #startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
 ##best practice is to use a design created by this function as a starting desgin for another round of optimization
 
-MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE){
+MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE, priorsnormalized = FALSE){
 
   #Calculate number of model points to use
   model_points <- questions*alts
@@ -473,6 +473,23 @@ if(augment == TRUE){
     #Standardize numeric columns
     candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
 
+    #Rescale priors to model matrix if they were not supplied in scaled format
+
+    if(priorsnormalized == FALSE){
+
+      for(i in 1:length(candexpand)){
+
+        for(j in 2:ncol(candexpand[[i]])){
+
+          #Recalculate prior for -1 to 1 normalization of related variable
+          priors[[i]][j-1] <- priors[[i]][j-1]*0.5*(max(all_input_ranges[1:2,colnames(candexpand[[i]])[j]])-min(all_input_ranges[1:2,colnames(candexpand[[i]])[j]]))
+
+
+        }
+
+      }
+
+    }
 
 #Initialize efficiency vector
 eff_vect <- rep(0, length(formulalist))
@@ -674,6 +691,23 @@ if(length(lineareqs) > 0){
 
     if(sum(factcols == FALSE) > 0){
       candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
+    }
+
+    #Rescale priors to model matrix if they were not supplied in scaled format
+    if(priorsnormalized == FALSE){
+
+      for(i in 1:length(candexpand)){
+
+        for(j in 2:ncol(candexpand[[i]])){
+
+          #Recalculate prior for -1 to 1 normalization of related variable
+          priors[[i]][j-1] <- priors[[i]][j-1]*0.5*(max(all_input_ranges[1:2,colnames(candexpand[[i]])[j]])-min(all_input_ranges[1:2,colnames(candexpand[[i]])[j]]))
+
+
+        }
+
+      }
+
     }
 
     if(is.null(startingdesign) == TRUE){

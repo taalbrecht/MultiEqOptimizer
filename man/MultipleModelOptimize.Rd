@@ -78,6 +78,10 @@ Optional. Vector of named variables that should be the same for all alternatives
 Optional. TRUE/FALSE value that specifies whether the model should optimize all points in the design or only new points. To use this option a compatible design must be furnished to the startingdesign argument. In this case, the questions and alts arguments will be assumed to apply to the number of design points that should be ADDED to the design. Default is FALSE.
 }
 
+  \item{priorsnormalized}{
+TRUE/FALSE value that specifies whether the supplied prior estimates for the coefficient values are scaled for a model effect range of -1 to 1. If FALSE, the priors supplied are with respect to the real-world values of the variable (e.g. a prior of 0.5 for a variable that can take values from 1 to 5 would provide an effect of 0.5 - 2.5). If TRUE, the priors are scaled for a model effect range of -1 to 1 (e.g. a prior of 0.5 for a variable will provide an effect of -0.5 to 0.5 for any supplied varlable range). Default is FALSE.
+}
+
 }
 \details{
 %%  ~~ If necessary, more details than the description above ~~
