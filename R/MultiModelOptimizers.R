@@ -1,3 +1,5 @@
+############################DEPRECATED FUNCTION. ALL FUNCTIONS AND MORE CAN NOW BE EXECUTED USING MultipleModelOptimize#############################################
+
 #########################CEX Function to optimize for all models in list of formulas###############################
 
 #Calculates: Design that optimizes for multiple models with constraint to efficiency target for each model
@@ -26,208 +28,208 @@
 #weight - vector of weighting values to apply to each formula in formulalist. Order of this vector matches order of input formulas. Format = c(0.5,0.25, etc)
 #		if weight is not supplied, function will attempt to maximize lowest d_efficiency using det_ref_list
 
-CEX_MultipleModel <- function(base_input_range, formulalist, model_points, blocks = NA, det_ref_list, mesh, tolerance, weight, candset = NA, searchstyle = "Fedorov"){
-
-  #Determine step number based on mesh input and construct sequence from -1 to 1 by step size
-  # step <- 2/(mesh-1)
-  # stepseq <- seq(-1,1, by = step)
-
-  #library(nlme)
-
-  #Pull inputs only from all formulas and place into a list
-  inputs_only <- lapply(formulalist, list_input_variables)
-
-  #Create list of all base input variables used in formulalist
-  input_list <- unique(unlist(inputs_only))
-
-  #Find min and max range for all base vars and algebraic combinations in formulalist (WARNING: If surface is very complex, THIS MAY FAIL)
-  list_input_ranges <- lapply(formulalist, algebraic_range, base_var_range = base_input_range)
-  all_input_ranges <- data.frame(base_input_range, list_input_ranges)
-  colnames(all_input_ranges) <- c(colnames(base_input_range), unlist(lapply(list_input_ranges,colnames)))
-  all_input_ranges <- as.matrix(all_input_ranges) #Convert from list to matrix
-  all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
-
-  #Create list of one-sided expressions of input only side for all formulas in formulalist
-  input_formulas <- sapply(formulalist, nlme::splitFormula)
-
-  #Optimize via Columnwise search if that option is selected
-
-  if(searchstyle == "Columnwise"){
-    #If mesh supplied as a single value, apply it to all base input values
-    if(length(mesh) == 1){
-
-      mesh <- rep(mesh, times = length(input_list))
-
-    }
-
-
-    #Determine step number based on mesh input and construct sequence from -1 to 1 by step size
-    stepseq <- list()
-
-    for(i in 1:length (input_list)){
-
-      step <- 2/(mesh[i]-1)
-
-      stepseq[[i]] <- seq(-1,1, by = step)
-
-    }
-
-    # #Create random model matrix using base vars (standardized {-1 to 1}) to start optimization function and assign input names to columns
-    # ModelMatStand <- matrix(data = sample(stepseq, length(input_list)*model_points, replace = TRUE), nrow = model_points, ncol = length(input_list))
-    # colnames(ModelMatStand) <- input_list
-
-    #Create random model matrix using base vars (standardized {-1 to 1}) to start optimization function and assign input names to columns
-    ModelMatStand <- sapply(stepseq, sample, size = model_points, replace = TRUE)
-    colnames(ModelMatStand) <- input_list
-
-    #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
-    d_efficiency_vect <- Vectorize(d_efficiency, c("input_formula", "det_ref"))
-
-    #Calculate initial D-efficiencies for randomly seeded model
-    ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE) #Convert to real numbers before passing to d_efficiency
-    eff_vect <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
-
-    #Calculate starting objective function using vector of weights
-    if(missing(weight))
-    {obj_current <- min(eff_vect[1,])}
-    else{obj_current <- sum(eff_vect[1,]*weight)}
-
-    #Initialize objective change value to start while loop
-    objective_change <- tolerance + 1
-
-    #Outer loop to run until tolerance achieved
-    while (objective_change > tolerance){
-
-      #Store objective function value before executing replacement loop
-      obj_prev <- obj_current
-
-      #Loop to make single pass through design, one parameter at a time
-      for (i in 1:nrow(ModelMatStand)){
-        for(j in 1:ncol(ModelMatStand)){
-
-          #Step through -1 to 1 by step value
-          for (s in stepseq[[j]]){
-
-            #Replace current value in ModelMatStand with new temporary point
-            oldvalue <- ModelMatStand[i,j]
-            ModelMatStand[i,j] <- s
-
-            #Calculate D-efficiencies for ModelMatStand with new temporary point
-            ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE) #Convert to real numbers before passing to d_efficiency
-            eff_vect <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
-
-            #Calculate new objective function value using vector of weights and temporary point
-            if(missing(weight))
-            {obj_temp <- min(eff_vect[1,])}
-            else{obj_temp <- sum(eff_vect[1,]*weight)}
-
-            #If objective of new point is greater than old point, use new point in matrix. Otherwise, put old point back into matrix
-            if(obj_temp <= obj_current)
-
-            {ModelMatStand[i,j] <- oldvalue}
-
-            else {obj_current <- obj_temp}
-          }
-        }
-      }
-      #Check objective function after replacement to see if improv
-      objective_change <- obj_current - obj_prev
-    }
-
-    #Convert final matrix to real values
-    ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE)
-
-    #Calculate final d-efficiency
-    eff_vect_final <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
-
-  }
-
-  if(searchstyle == "Fedorov"){
-
-    #Reduce candidate set to only include base variables in the supplied formulas to eliminate extraneous data
-    candset <- candset[,input_list]
-
-    #Create model matrix of candidate set for each input formula
-    candexpand <- lapply(input_formulas, model.matrix, data = candset)
-
-    #Standardize all candidate sets within each variable range
-    candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x[,2:ncol(x)]), Input_range = inrange))
-
-    #Convert determinant list to vector
-    det_refs <- unlist(det_ref_list)
-
-    #Select random row indices from supplied candidate set of model points. Reduce matrix
-    rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
-    #ModelMatReal <- candset[sample(nrow(candset),size = model_points, replace = TRUE),]
-
-    #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
-    d_efficiency_vect <- Vectorize(d_efficiencysimple, c("CurrentMatrix", "det_ref"))
-
-    #Calculate initial D-efficiencies for randomly seeded model
-    eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,]), det_ref = det_ref_list)
-
-    #Calculate starting objective function using vector of weights
-    if(missing(weight))
-    {obj_current <- min(eff_vect[1,])}
-    else{obj_current <- sum(eff_vect[1,]*weight)}
-
-    #Initialize objective change value to start while loop
-    objective_change <- tolerance + 1
-
-    #Outer loop to run until tolerance achieved
-    while (objective_change > tolerance){
-
-      #Store objective function value before executing replacement loop
-      obj_prev <- obj_current
-
-      #Loop to make single pass through design, one row at a time
-      for (i in 1:length(rownums)){
-
-        #Try every possible point in candidate set of points for each row
-        for(j in 1:nrow(candset)){
-
-          #Replace current value in ModelMatReal with new temporary point
-          oldvalue <- rownums[i]
-          rownums[i] <- j
-
-          #Calculate D-efficiencies for ModelMatReal with new temporary point
-          eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,]), det_ref = det_ref_list)
-
-          #Calculate new objective function value using vector of weights and temporary point
-          if(missing(weight))
-          {obj_temp <- min(eff_vect[1,])}
-          else{obj_temp <- sum(eff_vect[1,]*weight)}
-
-          #If objective of new point is greater than old point, use new point in matrix. Otherwise, put old point back into matrix
-          if(obj_temp <= obj_current)
-
-          {rownums[i] <- oldvalue}
-
-          else {obj_current <- obj_temp}
-        }
-      }
-      #Check objective function after replacement to see if improv
-      objective_change <- obj_current - obj_prev
-    }
-
-    #Convert final matrix to real values
-    ModelMatReal <- candset[rownums,]
-
-    #Calculate final d-efficiency
-    eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,]), det_ref = det_ref_list)
-
-  }
-
-  colnames(eff_vect_final) <- input_formulas #Name efficiency vector formulas
-
-  #Name final output
-  outputfinal <- list(ModelMatReal, eff_vect_final, obj_current)
-  names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
-
-  #Return model matrix, objective function value, and 1/D-optimality for add, mech model
-
-  return(outputfinal)
-}
+# CEX_MultipleModel <- function(base_input_range, formulalist, model_points, blocks = NA, det_ref_list, mesh, tolerance, weight, candset = NA, searchstyle = "Fedorov"){
+#
+#   #Determine step number based on mesh input and construct sequence from -1 to 1 by step size
+#   # step <- 2/(mesh-1)
+#   # stepseq <- seq(-1,1, by = step)
+#
+#   #library(nlme)
+#
+#   #Pull inputs only from all formulas and place into a list
+#   inputs_only <- lapply(formulalist, list_input_variables)
+#
+#   #Create list of all base input variables used in formulalist
+#   input_list <- unique(unlist(inputs_only))
+#
+#   #Find min and max range for all base vars and algebraic combinations in formulalist (WARNING: If surface is very complex, THIS MAY FAIL)
+#   list_input_ranges <- lapply(formulalist, algebraic_range, base_var_range = base_input_range)
+#   all_input_ranges <- data.frame(base_input_range, list_input_ranges)
+#   colnames(all_input_ranges) <- c(colnames(base_input_range), unlist(lapply(list_input_ranges,colnames)))
+#   all_input_ranges <- as.matrix(all_input_ranges) #Convert from list to matrix
+#   all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
+#
+#   #Create list of one-sided expressions of input only side for all formulas in formulalist
+#   input_formulas <- sapply(formulalist, nlme::splitFormula)
+#
+#   #Optimize via Columnwise search if that option is selected
+#
+#   if(searchstyle == "Columnwise"){
+#     #If mesh supplied as a single value, apply it to all base input values
+#     if(length(mesh) == 1){
+#
+#       mesh <- rep(mesh, times = length(input_list))
+#
+#     }
+#
+#
+#     #Determine step number based on mesh input and construct sequence from -1 to 1 by step size
+#     stepseq <- list()
+#
+#     for(i in 1:length (input_list)){
+#
+#       step <- 2/(mesh[i]-1)
+#
+#       stepseq[[i]] <- seq(-1,1, by = step)
+#
+#     }
+#
+#     # #Create random model matrix using base vars (standardized {-1 to 1}) to start optimization function and assign input names to columns
+#     # ModelMatStand <- matrix(data = sample(stepseq, length(input_list)*model_points, replace = TRUE), nrow = model_points, ncol = length(input_list))
+#     # colnames(ModelMatStand) <- input_list
+#
+#     #Create random model matrix using base vars (standardized {-1 to 1}) to start optimization function and assign input names to columns
+#     ModelMatStand <- sapply(stepseq, sample, size = model_points, replace = TRUE)
+#     colnames(ModelMatStand) <- input_list
+#
+#     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
+#     d_efficiency_vect <- Vectorize(d_efficiency, c("input_formula", "det_ref"))
+#
+#     #Calculate initial D-efficiencies for randomly seeded model
+#     ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE) #Convert to real numbers before passing to d_efficiency
+#     eff_vect <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
+#
+#     #Calculate starting objective function using vector of weights
+#     if(missing(weight))
+#     {obj_current <- min(eff_vect[1,])}
+#     else{obj_current <- sum(eff_vect[1,]*weight)}
+#
+#     #Initialize objective change value to start while loop
+#     objective_change <- tolerance + 1
+#
+#     #Outer loop to run until tolerance achieved
+#     while (objective_change > tolerance){
+#
+#       #Store objective function value before executing replacement loop
+#       obj_prev <- obj_current
+#
+#       #Loop to make single pass through design, one parameter at a time
+#       for (i in 1:nrow(ModelMatStand)){
+#         for(j in 1:ncol(ModelMatStand)){
+#
+#           #Step through -1 to 1 by step value
+#           for (s in stepseq[[j]]){
+#
+#             #Replace current value in ModelMatStand with new temporary point
+#             oldvalue <- ModelMatStand[i,j]
+#             ModelMatStand[i,j] <- s
+#
+#             #Calculate D-efficiencies for ModelMatStand with new temporary point
+#             ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE) #Convert to real numbers before passing to d_efficiency
+#             eff_vect <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
+#
+#             #Calculate new objective function value using vector of weights and temporary point
+#             if(missing(weight))
+#             {obj_temp <- min(eff_vect[1,])}
+#             else{obj_temp <- sum(eff_vect[1,]*weight)}
+#
+#             #If objective of new point is greater than old point, use new point in matrix. Otherwise, put old point back into matrix
+#             if(obj_temp <= obj_current)
+#
+#             {ModelMatStand[i,j] <- oldvalue}
+#
+#             else {obj_current <- obj_temp}
+#           }
+#         }
+#       }
+#       #Check objective function after replacement to see if improv
+#       objective_change <- obj_current - obj_prev
+#     }
+#
+#     #Convert final matrix to real values
+#     ModelMatReal <- standardize_cols(ModelMatStand, input_list, all_input_ranges, reverse_standard = TRUE)
+#
+#     #Calculate final d-efficiency
+#     eff_vect_final <- d_efficiency_vect(CurrentMatrix = ModelMatReal, det_ref = det_ref_list, input_formula = input_formulas, Input_range = all_input_ranges)
+#
+#   }
+#
+#   if(searchstyle == "Fedorov"){
+#
+#     #Reduce candidate set to only include base variables in the supplied formulas to eliminate extraneous data
+#     candset <- candset[,input_list]
+#
+#     #Create model matrix of candidate set for each input formula
+#     candexpand <- lapply(input_formulas, model.matrix, data = candset)
+#
+#     #Standardize all candidate sets within each variable range
+#     candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x[,2:ncol(x)]), Input_range = inrange))
+#
+#     #Convert determinant list to vector
+#     det_refs <- unlist(det_ref_list)
+#
+#     #Select random row indices from supplied candidate set of model points. Reduce matrix
+#     rownums <- sample(nrow(candset), size = model_points, replace = TRUE)
+#     #ModelMatReal <- candset[sample(nrow(candset),size = model_points, replace = TRUE),]
+#
+#     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
+#     d_efficiency_vect <- Vectorize(d_efficiencysimple, c("CurrentMatrix", "det_ref"))
+#
+#     #Calculate initial D-efficiencies for randomly seeded model
+#     eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,]), det_ref = det_ref_list)
+#
+#     #Calculate starting objective function using vector of weights
+#     if(missing(weight))
+#     {obj_current <- min(eff_vect[1,])}
+#     else{obj_current <- sum(eff_vect[1,]*weight)}
+#
+#     #Initialize objective change value to start while loop
+#     objective_change <- tolerance + 1
+#
+#     #Outer loop to run until tolerance achieved
+#     while (objective_change > tolerance){
+#
+#       #Store objective function value before executing replacement loop
+#       obj_prev <- obj_current
+#
+#       #Loop to make single pass through design, one row at a time
+#       for (i in 1:length(rownums)){
+#
+#         #Try every possible point in candidate set of points for each row
+#         for(j in 1:nrow(candset)){
+#
+#           #Replace current value in ModelMatReal with new temporary point
+#           oldvalue <- rownums[i]
+#           rownums[i] <- j
+#
+#           #Calculate D-efficiencies for ModelMatReal with new temporary point
+#           eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,]), det_ref = det_ref_list)
+#
+#           #Calculate new objective function value using vector of weights and temporary point
+#           if(missing(weight))
+#           {obj_temp <- min(eff_vect[1,])}
+#           else{obj_temp <- sum(eff_vect[1,]*weight)}
+#
+#           #If objective of new point is greater than old point, use new point in matrix. Otherwise, put old point back into matrix
+#           if(obj_temp <= obj_current)
+#
+#           {rownums[i] <- oldvalue}
+#
+#           else {obj_current <- obj_temp}
+#         }
+#       }
+#       #Check objective function after replacement to see if improv
+#       objective_change <- obj_current - obj_prev
+#     }
+#
+#     #Convert final matrix to real values
+#     ModelMatReal <- candset[rownums,]
+#
+#     #Calculate final d-efficiency
+#     eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,]), det_ref = det_ref_list)
+#
+#   }
+#
+#   colnames(eff_vect_final) <- input_formulas #Name efficiency vector formulas
+#
+#   #Name final output
+#   outputfinal <- list(ModelMatReal, eff_vect_final, obj_current)
+#   names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
+#
+#   #Return model matrix, objective function value, and 1/D-optimality for add, mech model
+#
+#   return(outputfinal)
+# }
 
 ##########################################################################################################################################
 
@@ -282,16 +284,16 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
   optimizerowstart <- 1
 
 
-if(augment == TRUE){
-  #For designs that will be augmented, add the alternative vector generated above to the existing vector from staringdesign
-  #Format expected for this is a column labeled "Question"
+  if(augment == TRUE){
+    #For designs that will be augmented, add the alternative vector generated above to the existing vector from staringdesign
+    #Format expected for this is a column labeled "Question"
 
-  altvect <- c(startingdesign$Question, altvect + max(startingdesign$Question))
+    altvect <- c(startingdesign$Question, altvect + max(startingdesign$Question))
 
-  #Define starting row as row after the starting design
-  optimizerowstart <- nrow(startingdesign)+1
+    #Define starting row as row after the starting design
+    optimizerowstart <- nrow(startingdesign)+1
 
-}
+  }
 
   #Convert determinant list to vector
   det_ref_list <- unlist(det_ref_list)
@@ -339,9 +341,9 @@ if(augment == TRUE){
 
         #If the length of the mesh entry is equal to 1, it refers to the number of steps to break the search into.
         if(length(mesh[[i]]) == 1){
-        step <- (max(base_input_range[[input_list[[i]]]]) - min(base_input_range[[input_list[[i]]]]))/(mesh[[i]]-1)
+          step <- (max(base_input_range[[input_list[[i]]]]) - min(base_input_range[[input_list[[i]]]]))/(mesh[[i]]-1)
 
-        stepseq[[i]] <- seq(min(base_input_range[[input_list[[i]]]]),max(base_input_range[[input_list[[i]]]]), by = step)
+          stepseq[[i]] <- seq(min(base_input_range[[input_list[[i]]]]),max(base_input_range[[input_list[[i]]]]), by = step)
         }
 
         #If the length of the mesh entry is greater than 1, it is interpreted as a vector of valid values to use in the search
@@ -434,9 +436,9 @@ if(augment == TRUE){
     all_input_ranges <- all_input_ranges[,unique(colnames(all_input_ranges))] # Remove redundant columns from matrix
 
     if(is.null(startingdesign) == TRUE){
-    #Create random model matrix using base vars to start optimization function and assign input names to columns
-    ModelMatReal <- data.frame(lapply(stepseq, sample, size = model_points, replace = TRUE))
-    colnames(ModelMatReal) <- input_list
+      #Create random model matrix using base vars to start optimization function and assign input names to columns
+      ModelMatReal <- data.frame(lapply(stepseq, sample, size = model_points, replace = TRUE))
+      colnames(ModelMatReal) <- input_list
 
     }else{
 
@@ -448,8 +450,8 @@ if(augment == TRUE){
         ModelMatReal <- rbind.data.frame(startingdesign[,input_list], ModelMatReal)
 
       }else{
-      #Use provided design as starting point
-      ModelMatReal <- startingdesign[,input_list]
+        #Use provided design as starting point
+        ModelMatReal <- startingdesign[,input_list]
       }
     }
 
@@ -464,8 +466,11 @@ if(augment == TRUE){
 
     }
 
-    #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
+    #Vectorize full D-efficiency function to be able to call later using lists of model matrix and parameter estimates
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
+
+    #Vectorize d-efficiency update function for multinomial models to be able to call later using lists of model matrix, parameter estimates, and existing information matrix
+    d_efficiency_update_vect <- Vectorize(d_effchoiceupdate, c("CurrentMatrix", "paramestimates", "info_mat"))
 
     #Expand model matrix for each formula
     candexpand <- lapply(formulalist, model.matrix, data = ModelMatReal)
@@ -491,39 +496,45 @@ if(augment == TRUE){
 
     }
 
-#Initialize efficiency vector
-eff_vect <- rep(0, length(formulalist))
+    #Initialize efficiency vector
+    eff_vect <- rep(0, length(formulalist))
 
-##############################New Code#########################################
+    ##############################New Code#########################################
 
-#Ensure that blocking variables by question for choice designs are set to the same value across the question choice sets
-if(is.null(questionblockvars) == FALSE){
-  for(i in 1:length(questionblockvars)){
-    for(j in 1:questions){
+    #Ensure that blocking variables by question for choice designs are set to the same value across the question choice sets
+    if(is.null(questionblockvars) == FALSE){
+      for(i in 1:length(questionblockvars)){
+        for(j in 1:questions){
 
-      ModelMatReal[[questionblockvars]][altvect == j] <- ModelMatReal[[questionblockvars]][altvect == j][1]
+          ModelMatReal[[questionblockvars]][altvect == j] <- ModelMatReal[[questionblockvars]][altvect == j][1]
 
+        }
+      }
     }
-  }
-}
 
-#######################
+    #######################
 
     #Calculate initial D-efficiency for randomly seeded model for Choice equations
-if(length(choiceeqs) > 0){
-eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
-}
+    if(length(choiceeqs) > 0){
+      eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+    }
 
-#Calculate d-efficiency for linear equations
-if(length(lineareqs) > 0){
+    #Calculate d-efficiency for linear equations
+    if(length(lineareqs) > 0){
 
-  eff_vect[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple)/det_ref_list[lineareqs]
+      eff_vect[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple)/det_ref_list[lineareqs]
 
-}
+    }
 
     #Calculate starting objective function using vector of weights
     if(missing(weight)){obj_current <- min(eff_vect)}else{
       obj_current <- sum(eff_vect*weight)}
+
+    #Initialize the current question for choice experiments
+    currentquestion <- 0
+
+    #Initialize info_mat list for current information matrix of non-updated question
+    info_mat <- as.list(rep(0, length(formulalist)))
 
     #Initialize objective change value to start while loop
     objective_change <- tolerance + 1
@@ -536,6 +547,32 @@ if(length(lineareqs) > 0){
 
       #Loop to make single pass through design, one parameter at a time
       for (i in optimizerowstart:nrow(ModelMatReal)){
+
+        #Calculate d-efficiency for choice models
+        if(length(choiceeqs) > 0){
+
+          #Check current question number. If it has changed, recalculate the logistic multinomial model information matrix for all questions not being updated in this loop
+          if(currentquestion != altvect[i]){
+
+            #Update current question to match current row of design being updated
+            currentquestion <- altvect[i]
+
+            #Calculate information matrix for all of design except current question being updated
+            info_mat[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[(altvect != currentquestion),2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect[altvect != currentquestion], returninfomat = TRUE)[2,]
+
+          }
+
+        }
+
+        #Calculate d-efficiency for linear models
+        if(length(lineareqs) > 0){
+
+          eff_vect[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple)/det_ref_list[lineareqs]
+
+        }
+
+
+
         for(j in 1:ncol(ModelMatReal)){
 
           #Step through -1 to 1 by step value
@@ -560,12 +597,16 @@ if(length(lineareqs) > 0){
             candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
 
             ##Old method that only considered one form of d-efficiency
-#             #Calculate D-efficiency
-#             eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x) x[,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+            #             #Calculate D-efficiency
+            #             eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x) x[,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
 
             #Calculate d-efficiency for choice models
             if(length(choiceeqs) > 0){
-              eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+
+              #Update d-efficiency with new point (must send entire alternative set for this question)
+              eff_vect[choiceeqs] <- d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[(altvect == currentquestion),2:ncol(x)]), paramestimates = priors[choiceeqs], info_mat = info_mat[choiceeqs])/det_ref_list[choiceeqs]
+
+              #eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
             }
 
             #Calculate d-efficiency for linear models
@@ -589,7 +630,7 @@ if(length(lineareqs) > 0){
                 #Replace all sets in this question if this is a blocking variable
                 ModelMatReal[[questionblockvars]][altvect == altvect[i]] <- oldvalue
               }
-              }else{
+            }else{
               obj_current <- obj_temp}
           }
         }
@@ -616,7 +657,8 @@ if(length(lineareqs) > 0){
       #Calculate final d-efficiency
       eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
       #Calculate final covlist
-      cov_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returncov = TRUE)[2,]
+
+      cov_vect_final[choiceeqs] <- lapply(d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)[2,], function(x) tryCatch(solve(x), error = function(x) diag(x = Inf, ncol = 2, nrow = 2)))
     }
 
     #Calculate final d-efficiency for linear models
@@ -721,30 +763,33 @@ if(length(lineareqs) > 0){
       rownums <- c(1:nrow(startingdesign))
 
       if(augment == TRUE){
-      #Randomly sample additional points from the supplied candidate set of model points
+        #Randomly sample additional points from the supplied candidate set of model points
         rownums <- c(1:nrow(startingdesign), sample(c(optimizerowstart:nrow(candset)), size = model_points, replace = TRUE))
 
 
-#       ##Matching code is no longer necessary as existing points are added in their entirety to the first rows of the candset
-#       for(i in 1:nrow(startingdesign)){
-#
-#         rowmatch <- sapply(input_list, function(y) candset[,y] == startingdesign[i,input_list][[y]])
-#         rowmatch <- which(apply(rowmatch, MARGIN = 1, prod) == 1)
-#         rownums[i] <- as.integer(rowmatch[1])
-#
-#       }
+        #       ##Matching code is no longer necessary as existing points are added in their entirety to the first rows of the candset
+        #       for(i in 1:nrow(startingdesign)){
+        #
+        #         rowmatch <- sapply(input_list, function(y) candset[,y] == startingdesign[i,input_list][[y]])
+        #         rowmatch <- which(apply(rowmatch, MARGIN = 1, prod) == 1)
+        #         rownums[i] <- as.integer(rowmatch[1])
+        #
+        #       }
 
       }
-}
+    }
 
     #Vectorize D-efficiency function to be able to call later using lists of formulas and reference determinants
     d_efficiency_vect <- Vectorize(d_effchoice, c("CurrentMatrix", "paramestimates"))
 
-#Initialize efficiency vector
-eff_vect <- rep(0, length(formulalist))
-# #Original single equation type code
-#     #Calculate initial D-error for randomly seeded model
-#     eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+    #Vectorize d-efficiency update function for multinomial models to be able to call later using lists of model matrix, parameter estimates, and existing information matrix
+    d_efficiency_update_vect <- Vectorize(d_effchoiceupdate, c("CurrentMatrix", "paramestimates", "info_mat"))
+
+    #Initialize efficiency vector
+    eff_vect <- rep(0, length(formulalist))
+    # #Original single equation type code
+    #     #Calculate initial D-error for randomly seeded model
+    #     eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
 
     #Calculate initial d-efficiency for both model types
     if(length(choiceeqs) > 0){
@@ -763,6 +808,12 @@ eff_vect <- rep(0, length(formulalist))
     {obj_current <- min(eff_vect)}
     else{obj_current <- sum(eff_vect*weight)}
 
+    #Initialize the current question for choice experiments
+    currentquestion <- 0
+
+    #Initialize info_mat list for current information matrix of non-updated question
+    info_mat <- as.list(rep(0, length(formulalist)))
+
     #Initialize objective change value to start while loop
     objective_change <- tolerance + 1
 
@@ -775,6 +826,17 @@ eff_vect <- rep(0, length(formulalist))
       #Loop to make single pass through design, one row at a time
       for (i in optimizerowstart:length(rownums)){
 
+        #Check current question number. If it has changed, recalculate the logistic multinomial model information matrix for all questions not being updated in this loop
+        if(currentquestion != altvect[i]){
+
+          #Update current question to match current row of design being updated
+          currentquestion <- altvect[i]
+
+          #Calculate information matrix for all of design except current question being updated
+          info_mat[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect != currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect[altvect != currentquestion], returninfomat = TRUE)[2,]
+
+        }
+
         #Try every possible point in candidate set of points supplied by user for each row
         ##Note that this starts at optimizerowstart to account for the rows that were added to the start of the candidate set when a startingdesign is supplied
         for(j in optimizerowstart:nrow(candset)){
@@ -783,15 +845,18 @@ eff_vect <- rep(0, length(formulalist))
           oldvalue <- rownums[i]
           rownums[i] <- j
 
-#           #Old single equation type code
-#           #Calculate D-efficiencies for ModelMatReal with new temporary point
-#           eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
+          #           #Old single equation type code
+          #           #Calculate D-efficiencies for ModelMatReal with new temporary point
+          #           eff_vect <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect)/det_ref_list
 
           #Calculate D-efficiencies for ModelMatReal with new temporary point
           if(length(choiceeqs) > 0){
 
-            #Calculate choice d-efficiency
-            eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+            #Update d-efficiency with new point (must send entire alternative set for this question)
+            eff_vect[choiceeqs] <- d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect == currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], info_mat = info_mat[choiceeqs])/det_ref_list[choiceeqs]
+
+            ##Calculate choice d-efficiency
+            #eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
           }
 
           if(length(lineareqs) > 0){
@@ -820,9 +885,9 @@ eff_vect <- rep(0, length(formulalist))
     #Convert final matrix to real values
     ModelMatReal <- candset[rownums,]
 
-#     #Old code for single equation type
-#     #Calculate final d-efficiency
-#     eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect, returncov = TRUE)
+    #     #Old code for single equation type
+    #     #Calculate final d-efficiency
+    #     eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect, returncov = TRUE)
 
     #Initialize final d-efficiency and covariance lists
     eff_vect_final <- as.list(eff_vect)
@@ -835,7 +900,8 @@ eff_vect <- rep(0, length(formulalist))
       #Calculate final d-efficiency
       eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
       #Calculate final covlist
-      cov_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returncov = TRUE)[2,]
+
+      cov_vect_final[choiceeqs] <- lapply(d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)[2,], function(x) tryCatch(solve(x), error = function(x) diag(x = Inf, ncol = 2, nrow = 2)))
     }
 
     #Calculate final d-efficiency for linear models

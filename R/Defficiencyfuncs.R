@@ -1,8 +1,9 @@
 ########################D-efficiency calc function######################################
 #Calculates determinant of supplied model matrix and scales to d-efficiency
 
-#Output: vector(d_eff,det_calc) where:
+#Output: vector(d_eff,vcov) where:
 #d_eff - d-efficiency of model matrix assuming linear model
+#vcov - the variance-covariance matrix of the model
 
 #Inputs:
 #CurrentMatrix - model matrix with appropriate factor numerical coding as created by the model.matrix function. Data.frame formats not accepted
@@ -30,6 +31,30 @@ d_efficiencysimple <- function(CurrentMatrix, returncov = FALSE){
 
   #Return objective function and determinants for both current models
   return(output)}
+
+###########################################################################################
+
+########################D-efficiency calc function######################################
+#Calculates determinant of supplied model matrix and scales to d-efficiency
+
+#Output: d-efficiency of model matrix assuming linear model
+
+#Inputs:
+#CurrentMatrix - model matrix with appropriate factor numerical coding as created by the model.matrix function. Data.frame formats not accepted
+
+d_efflinearupdate <- function(CurrentMatrix){
+
+  #Calculate information matrix
+  infomat <- t(CurrentMatrix)%*%CurrentMatrix
+
+  #Calculate determinant of information matrix
+  det_calc <- det(infomat)
+
+  #Set determinants equal to zero if less than zero due to R not being able to precisely calculate determinant
+  if(det_calc < 0){det_calc <- 0}
+
+  #Return d-efficiency
+  return(((det_calc)^(1/(ncol(CurrentMatrix))))/nrow(CurrentMatrix))}
 
 ###########################################################################################
 
@@ -95,9 +120,9 @@ d_efficiency <- function(CurrentMatrix, det_ref, input_formula, Input_range){
 #altvect - vector with integer corresponding to each row that indicates which choice set it is a member of
 #paramestimates - estimates for each effect (column) of model matrix sized corresponding to standardized model matrix.
 ####If not supplied, parameter estimates will be assumed equal to zero for all parameters
-#returncov - whether to return the covariance matrix as well. Default is FALSE
+#returninfomat - whether to return the covariance matrix as well. Default is FALSE
 
-d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returncov = FALSE){
+d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returninfomat = FALSE){
 
   #get all unique alternate names
   altnames <- unique(altvect)
@@ -127,7 +152,7 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returncov
   } # end of loop over choice sets
   #get the inverse of the information matrix (i.e., gets the variance-covariance matrix)
   #Use "try" wrapper to prevent unsolvable matrices from crashing. Return 2x2 diagonal infinite matrix on crash
-  sigma_beta<- tryCatch(solve(info_mat,diag(ncol(CurrentMatrix))), error = function(x) diag(x = Inf, nrow = ncol(CurrentMatrix), ncol = ncol(CurrentMatrix)))
+  #sigma_beta<- tryCatch(solve(info_mat,diag(ncol(CurrentMatrix))), error = function(x) diag(x = Inf, nrow = ncol(CurrentMatrix), ncol = ncol(CurrentMatrix)))
 
 
   #Calculate determinant
@@ -135,15 +160,51 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returncov
   #If determinant is negative (should not be possible but sometimes happens), return zero to prevent an error
   if(det_calc < 0){det_calc <- 0}
 
-  if(returncov == TRUE){
+  if(returninfomat == TRUE){
 
-    output <- list(d_eff = det_calc^(1/ncol(CurrentMatrix)), vcov = sigma_beta)
+    output <- list(d_eff = det_calc^(1/ncol(CurrentMatrix)), info_mat = info_mat)
 
   }else{output <- det_calc^(1/ncol(CurrentMatrix))}
 
   #Return objective function and determinants for both current models
   #return(list(d_eff = det(sigma_beta)^(-1/ncol(CurrentMatrix)), vcov = sigma_beta))}
   return(output)}
+
+
+###########################################################################################
+
+
+########################D-efficiency update function for single question for multinomial logit model#######################################Updates d-efficiency of supplied sub-model matrix and information matrix.
+#Fast d-efficiency update function for use during search algorithms to reduce search time. Requires supplied information matrix for all questions not included
+#Output: numeric value for d-efficiency
+
+#Inputs:
+#CurrentMatrix - subsection of model matrix for one question only. Should include all alternatives for that questionas created by the model.matrix function with all continuous parameters centered and standardized
+#### and appropriate factor numerical coding (generated using contr.sum for factors) as created by the model.matrix function.
+####Data.frame formats not accepted
+####Opt out choices, if included, should be coded as a row of all zeroes for every parameter
+#paramestimates - standardized effect estimates for each effect (column) of model matrix corresponding to standardized model matrix.
+#info_mat - the information matrix for all other questions in the model matrix
+
+d_effchoiceupdate <- function(CurrentMatrix, paramestimates, info_mat){
+
+  # compute exp(design matrix times initial parameter values)
+  exputilities <- c(exp(CurrentMatrix%*%paramestimates))
+
+  # obtain vector of choice shares within the choice set
+  p_set <- exputilities/sum(exputilities)
+
+  # calculate information matrix of this choice set and add it to the info_matrix
+  info_mat<-info_mat + t(CurrentMatrix)%*%(diag(p_set)-p_set%o%p_set)%*%CurrentMatrix
+
+  #Calculate determinant
+  det_calc <- det(info_mat)
+
+  #If determinant is negative (should not be possible but sometimes happens due to numerical processing), return zero to prevent an error
+  if(det_calc < 0){det_calc <- 0}
+
+  #Return Determinant
+  return(det_calc^(1/ncol(CurrentMatrix)))}
 
 
 ###########################################################################################

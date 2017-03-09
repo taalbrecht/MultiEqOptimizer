@@ -5,7 +5,7 @@
 D-efficiency calculation for a supplied discrete choice model matrix
 }
 \description{
-Calculates the d-efficiency of a supplied model matrix per the methods outlined in Zwerina et.al (1996) and the ratio of the d-efficiency to the optimal d-efficiency.
+Calculates the d-efficiency of a supplied model matrix for a multinomial logistic model per the methods outlined in Zwerina et.al (1996) and the ratio of the d-efficiency to the optimal d-efficiency.
 }
 \usage{
 d_effchoice(CurrentMatrix, altvect, paramestimates = NULL, returncov = FALSE)
@@ -30,11 +30,11 @@ TRUE/FALSE binary value indicating Whether to return the covariance matrix.
 }
 \value{
   \item{d_eff}{
-  Ratio of the d-efficiency of the supplied model to the optimal model.
+  D-efficiency of the supplied model.
 }
 
-  \item{det_calc}{
-  Determinanat of the supplied model information matrix, det(M'M)
+  \item{info_mat}{
+  Information matrix of the supplied model based on a multinomial logistic model.
 }
 }
 \references{
