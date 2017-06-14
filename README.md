@@ -5,7 +5,7 @@ MultiEqOptimizer is a package that contains functions used to create single expe
 
 http://dx.doi.org/10.1080/00401706.2012.746207
 
-Contains functions for linear regression and discrete choice conditional logistic models.
+Contains functions for linear regression and discrete choice logistic models.
 
 ## Installation
 

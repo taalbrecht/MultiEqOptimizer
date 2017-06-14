@@ -2,13 +2,13 @@
 \alias{MultipleModelOptimize}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Optimize a single experimental design for multiple discrete choice models
+Optimize a single experimental design for multiple discrete choice models and/or linear models
 }
 \description{
-Optimizes a single experimental design for multiple discrete choice models by joint optimization of the conditional logistic d-efficiency for all models. The algorithm attemtps to maximize the sum of the d-efficiency for each formula multiplied by the weight for each formula. If no weight vector is supplied, the algorithm will attempt to maximize lowest d-efficiency.
+Optimizes a single experimental design for multiple discrete choice and/or linear models by joint optimization of the conditional logistic d-efficiency for all models. The algorithm attemtps to maximize the sum of the d-efficiency for each formula multiplied by the weight for each formula. If no weight vector is supplied, the algorithm will attempt to maximize lowest d-efficiency.
 }
 \usage{
-DiscChoiceMultipleModel(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov")
+MultipleModelOptimize(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -17,7 +17,7 @@ Range of all base input variables used for all models in formulalist. Names must
 }
   \item{formulalist}{
 List of each model for joint d-efficiency optimization. Dependent variable does not need to be included.
-Format = list(I(x/A)~ I(A/B^2), ~ A + B + A:B etc)
+Format = list(I(x/A)~ I(A/B^2), ~ A + B + A:B) etc
 }
   \item{questions}{
 Integer specifying the number of choice sets (questions) to be used in the experiment.
@@ -125,11 +125,58 @@ Final value of the objective function
 %% ~~objects to See Also as \code{\link{help}}, ~~~
 }
 \examples{
-##---- Should be DIRECTLY executable !! ----
-##-- ==>  Define data, use random,
-##--	or do  help(data=index)  for the standard data sets.
 
-## The function is currently defined as
+##Define data needed to create design
+
+#Create list of formulas
+formulalist = list(~A+B, ~I(A/B)+B)
+
+#Create a set of candidate points (for Fedorov optimization)
+candset <- expand.grid(A = c(1, 2, 3), B = c(4, 5, 6))
+
+#Define step sizes for each variable (for Columnwise optimization)
+mesh <- list(20, 20)
+
+#Define ranges of each basic variable in all of the formulas in formulalist
+baseinputranges <- data.frame(A = c(1,3), B = c(4, 6))
+
+#Define weights
+weightvect <- c(0.5, 0.5)
+
+#Define equation types
+eqtypes <- c("Choice", "Linear")
+
+#Define estimates of coefficient values for each formula (affects discrete choice optimization but not linear optimization)
+priors <- list(c(-1, 1.5), c(0.75, 0.5))
+
+#Define reference determinant values to use for scaling d-efficiency for each formula. Used for weighting purposes
+deffrefs <- c(1,1)
+
+##Create design using Fedorov optimization
+fedorovdesign <- MultipleModelOptimize(base_input_range = baseinputranges,
+formulalist = formulalist,
+questions = 10,
+alts = 2,
+det_ref_list = deffrefs,
+tolerance = 0.01,
+candset = candset,
+priors = priors,
+weight = weightvect,
+searchstyle = "Fedorov",
+eqtype = eqtypes)
+
+##Create design using Columnwise optimization
+columnwisedesign <- MultipleModelOptimize(base_input_range = baseinputranges,
+formulalist = formulalist,
+questions = 10,
+alts = 2,
+det_ref_list = deffrefs,
+tolerance = 0.01,
+mesh = mesh,
+priors = priors,
+weight = weightvect,
+searchstyle = "Columnwise",
+eqtype = eqtypes)
 
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
