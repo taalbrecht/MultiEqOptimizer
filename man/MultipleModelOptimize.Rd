@@ -149,8 +149,34 @@ eqtypes <- c("Choice", "Linear")
 #Define estimates of coefficient values for each formula (affects discrete choice optimization but not linear optimization)
 priors <- list(c(-1, 1.5), c(0.75, 0.5))
 
-#Define reference determinant values to use for scaling d-efficiency for each formula. Used for weighting purposes
+#Define reference determinant values to use for scaling d-efficiency for each formula by weighting all on one formula
 deffrefs <- c(1,1)
+
+deffrefs[1] <- MultipleModelOptimize(base_input_range = baseinputranges,
+                                       formulalist = formulalist,
+                                       questions = 10,
+                                       alts = 2,
+                                       det_ref_list = detrefs,
+                                       tolerance = 0.01,
+                                       candset = candset,
+                                       priors = priors,
+                                       weight = c(1,0),
+                                       searchstyle = "Fedorov",
+                                       eqtype = eqtypes)$Deff[1]
+
+deffrefs[2] <- MultipleModelOptimize(base_input_range = baseinputranges,
+                                       formulalist = formulalist,
+                                       questions = 10,
+                                       alts = 2,
+                                       det_ref_list = detrefs,
+                                       tolerance = 0.01,
+                                       candset = candset,
+                                       priors = priors,
+                                       weight = c(0,1),
+                                       searchstyle = "Fedorov",
+                                       eqtype = eqtypes)$Deff[2]
+
+
 
 ##Create design using Fedorov optimization
 fedorovdesign <- MultipleModelOptimize(base_input_range = baseinputranges,
