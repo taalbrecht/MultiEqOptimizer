@@ -265,8 +265,12 @@
 #priors - list of known or estimated effect sizes (in model terms). Structure should be a list as follows: list(I(A^2) = 0.23, B = -0.5) where parameter names in list match those in formulas. For attribute parameters, list should be effect size with reference to first factor level. Any effects not provided will be assumed to be equal to zero.
 #startingdesign - design used as startingpoint for optimization. If not provided, a random design will be selected as the starting point. Will cause an error if this is not properly formatted.
 ##best practice is to use a design created by this function as a starting desgin for another round of optimization
+#Optimality - character defining which optimality criterion to use. More to be added soon Choices are:
+##D - d-optimality
+##D-Util - blend of d-optimality and utility balance in choice sets (for choice models only)
+#OptBlend - vector with scaling factor to apply to each efficiency type before adding together for total optimality when there are multiple (D-Util only currently)
 
-MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE, priorsnormalized = FALSE){
+MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE, priorsnormalized = FALSE, Optimality = "D", OptBlend = c(0.5,0.5)){
 
   #Calculate number of model points to use
   model_points <- questions*alts
@@ -297,6 +301,17 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
   #Convert determinant list to vector
   det_ref_list <- unlist(det_ref_list)
+
+  #Create list of largest possible variance for all choice equations (assumes basic multinomial logit)
+  p_var_ref <- 0
+
+  #Loop through all choice sets and calculate maximum possible variance of each set
+  for(i in unique(altvect)){
+
+    #Calculate maximum variance of set and add to total variance
+    p_var_ref <- p_var_ref + (1/length(which(altvect == i)))^length(which(altvect == i))
+
+  }
 
   #Pull inputs only from all formulas and place into a list
   inputs_only <- lapply(formulalist, list_input_variables)
@@ -646,16 +661,33 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     #Standardize numeric columns
     candexpand <- lapply(candexpand, function(x, inrange = all_input_ranges) standardize_cols(StartingMat = x, column_names = colnames(x)[colnames(x) %in% colnames(inrange)], Input_range = inrange))
 
-    #Initialize final d-efficiency and covariance lists
+    #Initialize final d-efficiency, optimality, covariance, and additional diagnostic lists
     eff_vect_final <- as.list(eff_vect)
 
+    opt_vect_final <- as.list(eff_vect)
+
     cov_vect_final <- as.list(rep(0, length(formulalist)))
+
+    additionaldiags <- list()
 
     #Calculate final d-efficiency for choice models
     if(length(choiceeqs) > 0){
 
       #Calculate final d-efficiency
+
+      #if(Optimality == "D"){
       eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
+      #}
+
+#       if(Optimality == "D-Util"){
+#
+#         temp_eff <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)
+#
+#         #Blend d-optimality with utility balance (ratio of variance/max variance) based on OptBlend
+#         eff_vect_final[choiceeqs] <- OptBlend[1]*unlist(temp_eff[1,])/det_ref_list[choiceeqs]+OptBlend[2]*unlist(temp_eff[3,])/p_var_ref
+#
+#       }
+
       #Calculate final covlist
 
       cov_vect_final[choiceeqs] <- lapply(d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x) x[,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)[2,], function(x) tryCatch(solve(x), error = function(x) diag(x = Inf, ncol = 2, nrow = 2)))
@@ -670,6 +702,11 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
       cov_vect_final[lineareqs] <- sapply(candexpand[lineareqs], d_efficiencysimple, returncov = TRUE)[2,]
 
     }
+
+    ##########################Placeholder section prior to implementing D-Util calcs for columnwise search
+    opt_vect_final <- unlist(eff_vect_final)/det_ref_list
+    #######################################################################
+
   }
 
   if(searchstyle == "Fedorov"){
@@ -794,8 +831,19 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     #Calculate initial d-efficiency for both model types
     if(length(choiceeqs) > 0){
 
+      #browser()
       #Calculate choice d-efficiency
+      if(Optimality == "D"){
       eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
+      }
+      if(Optimality == "D-Util"){
+
+        temp_eff <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)
+
+        #Blend d-optimality with utility balance (ratio of variance/max variance) based on OptBlend
+        eff_vect[choiceeqs] <- OptBlend[1]*unlist(temp_eff[1,])/det_ref_list[choiceeqs]+OptBlend[2]*unlist(temp_eff[3,])/p_var_ref
+
+      }
     }
     if(length(lineareqs) > 0){
 
@@ -814,6 +862,9 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     #Initialize info_mat list for current information matrix of non-updated question
     info_mat <- as.list(rep(0, length(formulalist)))
 
+    #Initialize p_var vector for current variance of non-updated question
+    p_var_static <- rep(p_var_ref,length(formulalist))
+
     #Initialize objective change value to start while loop
     objective_change <- tolerance + 1
 
@@ -831,9 +882,15 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
           #Update current question to match current row of design being updated
           currentquestion <- altvect[i]
+          #browser()
 
           #Calculate information matrix for all of design except current question being updated
-          info_mat[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect != currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect[altvect != currentquestion], returninfomat = TRUE)[2,]
+          temp_eff <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect != currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect[altvect != currentquestion], returninfomat = TRUE)
+          info_mat[choiceeqs] <- temp_eff[2,]
+
+          #Calculate p_var for all of design except current question being updated for D-Util optimization
+          p_var_static[choiceeqs] <- unlist(temp_eff[3,])
+
 
         }
 
@@ -853,7 +910,20 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
           if(length(choiceeqs) > 0){
 
             #Update d-efficiency with new point (must send entire alternative set for this question)
-            eff_vect[choiceeqs] <- d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect == currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], info_mat = info_mat[choiceeqs])/det_ref_list[choiceeqs]
+            #browser()
+            temp_eff <- d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect == currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], info_mat = info_mat[choiceeqs])
+            #D-efficiency
+            if(Optimality == "D"){
+              eff_vect[choiceeqs] <- unlist(temp_eff[1,])/det_ref_list[choiceeqs]
+            }
+
+            #D-efficiency and utility balance
+            if(Optimality == "D-Util"){
+
+              eff_vect[choiceeqs] <- OptBlend[1]*unlist(temp_eff[1,])/det_ref_list[choiceeqs]+OptBlend[2]*(unlist(temp_eff[2,])+p_var_static[choiceeqs])/p_var_ref
+
+            }
+            #eff_vect[choiceeqs] <- unlist(d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[(altvect == currentquestion)],2:ncol(x)]), paramestimates = priors[choiceeqs], info_mat = info_mat[choiceeqs])[1,])/det_ref_list[choiceeqs]
 
             ##Calculate choice d-efficiency
             #eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
@@ -889,19 +959,53 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     #     #Calculate final d-efficiency
     #     eff_vect_final <- d_efficiency_vect(CurrentMatrix = lapply(candexpand, function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors, altvect = altvect, returncov = TRUE)
 
-    #Initialize final d-efficiency and covariance lists
+    #Initialize final d-efficiency, optimality, covariance, and additional diagnostic lists
     eff_vect_final <- as.list(eff_vect)
 
+    opt_vect_final <- as.list(eff_vect)
+
     cov_vect_final <- as.list(rep(0, length(formulalist)))
+
+    additionaldiags <- list()
+    #Store probabilities where applicable
+    additionaldiags$probvect <- as.list(rep(NA, length(formulalist)))
 
     #Calculate final d-efficiency for choice models
     if(length(choiceeqs) > 0){
 
-      #Calculate final d-efficiency
-      eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
-      #Calculate final covlist
+      #Calculate final model
 
+      temp_eff <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)
+
+      #Calculate final d-efficiency for D-efficiency model
+
+      if(Optimality == "D"){
+
+        #Extract d-efficiency
+        eff_vect_final[choiceeqs] <- unlist(temp_eff[1,])
+
+        #Scale to d-optimality
+        opt_vect_final[choiceeqs] <- unlist(eff_vect_final[choiceeqs])/det_ref_list[choiceeqs]
+      #eff_vect_final[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)
+      }
+
+      if(Optimality == "D-Util"){
+
+        temp_eff <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)
+
+        #Pull d-efficiency into list
+        eff_vect_final[choiceeqs] <- unlist(temp_eff[1,])
+
+        #Blend d-optimality with utility balance (ratio of variance/max variance) based on OptBlend
+        opt_vect_final[choiceeqs] <- OptBlend[1]*unlist(temp_eff[1,])/det_ref_list[choiceeqs]+OptBlend[2]*unlist(temp_eff[3,])/p_var_ref
+
+      }
+
+      #Calculate final covlist
       cov_vect_final[choiceeqs] <- lapply(d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)[2,], function(x) tryCatch(solve(x), error = function(x) diag(x = Inf, ncol = 2, nrow = 2)))
+
+      #Extract probability vectors
+      additionaldiags$probvect[choiceeqs] <- temp_eff[4,]
     }
 
     #Calculate final d-efficiency for linear models
@@ -909,6 +1013,8 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
       #Calculate final d-efficiency
       eff_vect_final[lineareqs] <- sapply(lapply(candexpand[lineareqs], function(x, rowind = rownums) x[rowind,]), d_efficiencysimple)
+      #Translate to final d-optimality
+      opt_vect_final[lineareqs] <- unlist(eff_vect_final[lineareqs])/det_ref_list[lineareqs]
       #Calculate final covlist
       cov_vect_final[lineareqs] <- sapply(lapply(candexpand[lineareqs], function(x, rowind = rownums) x[rowind,]), d_efficiencysimple, returncov = TRUE)[2,]
 
@@ -920,13 +1026,14 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
   #Name final output
   outputfinal <- list("ModelMatrix" = data.frame(Question = altvect, ModelMatReal),
                       "Deff" = unlist(eff_vect_final),
-                      "DeffvsOptimal" = unlist(eff_vect_final)/det_ref_list,
+                      "DeffvsOptimal" = opt_vect_final,
                       "CovList" = cov_vect_final,
-                      "ObjectiveFunction" = obj_current)
+                      "ObjectiveFunction" = obj_current,
+                      "AdditionalDiagnostics" = additionaldiags)
   #names(outputfinal) <- c("ModelMatrix","D-Efficiency","ObjectiveFunction")
 
   #Return model matrix, objective function value, and 1/D-optimality for add, mech model
-
+ #browser()
   return(outputfinal)
 }
 

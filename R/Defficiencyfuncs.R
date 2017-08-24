@@ -135,7 +135,14 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returninf
   info_mat=matrix(rep(0,ncol(CurrentMatrix)*ncol(CurrentMatrix)), ncol(CurrentMatrix), ncol(CurrentMatrix))
   # compute exp(design matrix times initial parameter values)
   exputilities=exp(CurrentMatrix%*%paramestimates)
-  # loop over all choice sets
+
+  #Initialize vector that will be sum of product of each set probability (variance)
+  p_var <- 0
+
+  #Initialize vector that holds calculated probability of each alternative being selected
+  probvect <- rep(0,nrow(CurrentMatrix))
+
+  #Loop over each choice set
   for (k_set in 1:length(altnames)) {
     # select row numbers corresponding to current loop alternatives in the choice set
     alternatives= which(altvect == altnames[k_set])
@@ -149,7 +156,14 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returninf
     full_term<-t(CurrentMatrix[alternatives,])%*%middle_term%*%CurrentMatrix[alternatives,]
     # Add contribution of this choice set to the information matrix
     info_mat<-info_mat+full_term
-  } # end of loop over choice sets
+
+    #Calculate product of all probabilities in set and add to p_var
+    p_var <- p_var + prod(p_set)
+
+    #Enter all calculated probabilities for this set into the probability vector
+    probvect[alternatives] <- p_set
+
+  }
   #get the inverse of the information matrix (i.e., gets the variance-covariance matrix)
   #Use "try" wrapper to prevent unsolvable matrices from crashing. Return 2x2 diagonal infinite matrix on crash
   #sigma_beta<- tryCatch(solve(info_mat,diag(ncol(CurrentMatrix))), error = function(x) diag(x = Inf, nrow = ncol(CurrentMatrix), ncol = ncol(CurrentMatrix)))
@@ -162,7 +176,7 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returninf
 
   if(returninfomat == TRUE){
 
-    output <- list(d_eff = det_calc^(1/ncol(CurrentMatrix)), info_mat = info_mat)
+    output <- list(d_eff = det_calc^(1/ncol(CurrentMatrix)), info_mat = info_mat, p_var = p_var, probvect = probvect)
 
   }else{output <- det_calc^(1/ncol(CurrentMatrix))}
 
@@ -194,6 +208,9 @@ d_effchoiceupdate <- function(CurrentMatrix, paramestimates, info_mat){
   # obtain vector of choice shares within the choice set
   p_set <- exputilities/sum(exputilities)
 
+  #Calculate product of all probabilities in set for utility balance use
+  p_var <- prod(p_set)
+
   # calculate information matrix of this choice set and add it to the info_matrix
   info_mat<-info_mat + t(CurrentMatrix)%*%(diag(p_set)-p_set%o%p_set)%*%CurrentMatrix
 
@@ -204,7 +221,7 @@ d_effchoiceupdate <- function(CurrentMatrix, paramestimates, info_mat){
   if(det_calc < 0){det_calc <- 0}
 
   #Return Determinant
-  return(det_calc^(1/ncol(CurrentMatrix)))}
+  return(list(d_eff = det_calc^(1/ncol(CurrentMatrix)), p_var = p_var))}
 
 
 ###########################################################################################
