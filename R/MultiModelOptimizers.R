@@ -668,7 +668,15 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
     cov_vect_final <- as.list(rep(0, length(formulalist)))
 
+
     additionaldiags <- list()
+    #Store probabilities where applicable
+    additionaldiags$probvect <- as.list(rep(NA, length(formulalist)))
+    #Store probability variance where applicable
+    additionaldiags$p_var <- as.list(rep(NA, length(formulalist)))
+    #Store probability variance optimality (ratio of variance/max variance)
+    additionaldiags$p_opt <- as.list(rep(NA, length(formulalist)))
+
 
     #Calculate final d-efficiency for choice models
     if(length(choiceeqs) > 0){
@@ -969,6 +977,10 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     additionaldiags <- list()
     #Store probabilities where applicable
     additionaldiags$probvect <- as.list(rep(NA, length(formulalist)))
+    #Store probability variance where applicable
+    additionaldiags$p_var <- as.list(rep(NA, length(formulalist)))
+    #Store probability variance optimality (ratio of variance/max variance)
+    additionaldiags$p_opt <- as.list(rep(NA, length(formulalist)))
 
     #Calculate final d-efficiency for choice models
     if(length(choiceeqs) > 0){
@@ -1006,6 +1018,8 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
       #Extract probability vectors
       additionaldiags$probvect[choiceeqs] <- temp_eff[4,]
+      additionaldiags$p_var[choiceeqs] <- unlist(temp_eff[3,])
+      additionaldiags$p_opt[choiceeqs] <- unlist(temp_eff[3,])/p_var_ref
     }
 
     #Calculate final d-efficiency for linear models
