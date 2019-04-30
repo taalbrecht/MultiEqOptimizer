@@ -132,6 +132,14 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returninf
     paramestimates <- rep(0, ncol(CurrentMatrix))
   }
 
+  #Get position of intercept column
+  iceptcol <- grep("(Intercept)", colnames(CurrentMatrix), fixed = TRUE)
+
+  #If intercept is included in model, make it so it is interacted with all alternatives except for the first alternative
+  if(length(iceptcol) == 1){
+    CurrentMatrix[,iceptcol] <- rep(c(0, rep(1, length(altvect)/length(unique(altvect)) - 1)), times = length(unique(altvect)))
+  }
+
   info_mat=matrix(rep(0,ncol(CurrentMatrix)*ncol(CurrentMatrix)), ncol(CurrentMatrix), ncol(CurrentMatrix))
   # compute exp(design matrix times initial parameter values)
   exputilities=exp(CurrentMatrix%*%paramestimates)
@@ -200,7 +208,16 @@ d_effchoice <- function(CurrentMatrix, altvect, paramestimates = NULL, returninf
 #paramestimates - standardized effect estimates for each effect (column) of model matrix corresponding to standardized model matrix.
 #info_mat - the information matrix for all other questions in the model matrix
 
-d_effchoiceupdate <- function(CurrentMatrix, paramestimates, info_mat){
+d_effchoiceupdate <- function(CurrentMatrix, paramestimates, info_mat = 0){
+
+  #Get position of intercept column
+  iceptcol <- grep("(Intercept)", colnames(CurrentMatrix), fixed = TRUE)
+
+  #If intercept is included in model, make it so it is interacted with all alternatives except for the first alternative
+  if(length(iceptcol) == 1){
+    CurrentMatrix[,iceptcol] <- c(0, rep(1, nrow(CurrentMatrix) - 1))
+  }
+
 
   # compute exp(design matrix times initial parameter values)
   exputilities <- c(exp(CurrentMatrix%*%paramestimates))
@@ -221,7 +238,60 @@ d_effchoiceupdate <- function(CurrentMatrix, paramestimates, info_mat){
   if(det_calc < 0){det_calc <- 0}
 
   #Return Determinant
-  return(list(d_eff = det_calc^(1/ncol(CurrentMatrix)), p_var = p_var))}
+  return(list(d_eff = det_calc^(1/ncol(CurrentMatrix)), p_var = p_var, info_mat = info_mat, p_set = p_set))}
+
+
+###########################################################################################
+
+
+########################Occurrence probability calculation function for tournament matchup frames#######################################
+#
+#Output: vector of probability of each matchup occurring
+
+#Inputs:
+#matchupframe - data frame with the following columns:
+###matrixrowid - unique number corresponding to the alternative ("team") as it progresses through the tournament.
+###questionid - number of the matchup ("game").
+###uniquesetid - unique number assigned to each potential matchup. There will be multiple potential matchups for each possible questionid
+###sourcequestion - the previous questionid ("game") that the alternative ("team") must have won to arrive in this questionid ("game"). Should be 0 for the first questionid ("game") for each alternative ("team")
+
+#winprobs - vector of win probabilities for each alternative in matchupframe. Must have length equal to number of rows in matchupframe
+#occurprobs - (optional) vector of pre-existing chance of each matchup occurring. Should be 1 for any questionid that does not have a sourcequestion in matchupframe. If not passed, the entire occurrence probability vector will be generated from scratch.
+#updatevect - (optional) vector of questionids in matchupframe that should be updated based on the supplied winprobs vector and previous occurprobs vector. If not passed, all occurrence probabilities will be updated.
+
+matchupprobs <- function(matchupframe, winprobs, occurprobs = NA, updatevect = NA){
+
+    #Initialize occurrence probability vector and update vector if occurrence probability vector was not provided
+    if(is.na(occurprobs)[1]){
+      occurprobs <- rep(1, times = nrow(matchupframe))
+      updatevect <- unique(matchupframe$questionid[matchupframe$sourcequestion > 0])
+    }
+  #browser()
+    #Initialize update vector if it was not provided
+    if(is.na(updatevect)[1]){
+      updatevect <- unique(matchupframe$questionid[matchupframe$sourcequestion > 0])
+    }
+
+      #Loop through all tournament questions
+      for(i in updatevect){
+        #Loop through all rows for this tournament set in matchup frame to calculate the probability of each alternative making it to this round of the tournament
+        for(j in which(matchupframe$questionid == i)){
+
+          temprows <- which((matchupframe$matrixrowid == matchupframe$matrixrowid[j]) &
+                              (matchupframe$questionid == matchupframe$sourcequestion[j]))
+
+          occurprobs[j] <- sum(occurprobs[temprows]*winprobs[temprows])
+
+        }
+        #Multiply chance of each alternative making it to this question to get probability of specific matchup occuring
+        for(j in unique(matchupframe$uniquesetid[matchupframe$questionid == i])){
+
+          occurprobs[matchupframe$uniquesetid == j] <- prod(occurprobs[matchupframe$uniquesetid == j])
+
+
+        }
+      }
+  return(list(occurprobs = occurprobs))}
 
 
 ###########################################################################################

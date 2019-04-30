@@ -269,13 +269,12 @@
 ##D - d-optimality
 ##D-Util - blend of d-optimality and utility balance in choice sets (for choice models only)
 #OptBlend - vector with scaling factor to apply to each efficiency type before adding together for total optimality when there are multiple (D-Util only currently)
+#ChoiceTournamentAlts - integer stating how many alternatives should be used for a winners' tournament from all choice sets in each block. 0 means no choice tournament will occur.
 
-MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE, priorsnormalized = FALSE, Optimality = "D", OptBlend = c(0.5,0.5)){
+MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts, blocks = NA, optout = FALSE, det_ref_list, mesh, tolerance, weight, candset = NA, priors = NA, searchstyle = "Fedorov", startingdesign = NULL, eqtype = NULL, questionblockvars = NULL, augment = FALSE, priorsnormalized = FALSE, Optimality = "D", OptBlend = c(0.5,0.5), ChoiceTournamentAlts = 0){
 
-  #Calculate number of model points to use
+  #Calculate number of model points to use in base choice set
   model_points <- questions*alts
-
-  #library(nlme)
 
   #Generate vector that describes sequence of question vs model points
   altvect <- c()
@@ -298,6 +297,89 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     optimizerowstart <- nrow(startingdesign)+1
 
   }
+
+  #Create choice tournament matrix of winner pairings to get to one overall winner
+  if(ChoiceTournamentAlts > 1){
+
+    #Initialize tournament matrix
+    tournamentframe <- data.frame(sourcequestion =unique(altvect[optimizerowstart:length(altvect)]) , tournamentset = unique(altvect[optimizerowstart:length(altvect)]))
+
+    #loop through to create tournament pairings
+    processedrow <- 0
+
+    while(processedrow < nrow(tournamentframe)){
+
+      #Create one tournament set from source question winners based on ChoiceTournamentAlts set size or the number of source questions remaining
+      tournamentframe$tournamentset[(1+processedrow):min(processedrow+ChoiceTournamentAlts, nrow(tournamentframe))] <- max(tournamentframe) + 1
+      processedrow <- min(processedrow+ChoiceTournamentAlts, nrow(tournamentframe))
+
+      #Add rows for winner if there is more than one champion left
+      if(processedrow < nrow(tournamentframe)){
+
+        tournamentframe[(nrow(tournamentframe) + 1), ] <- c(max(tournamentframe), 0)
+
+      }
+
+
+    }
+
+    #Create matrix of all possible alternative matchups. Start with specified starting alternative matchups that will be asked with 100% certainty
+    matchupframe <- data.frame(matrixrowid = c(optimizerowstart:length(altvect)), questionid = altvect[optimizerowstart:length(altvect)])
+
+    #Add column for a unique number to assign to each possible choice set
+    matchupframe$uniquesetid <- matchupframe$questionid
+
+    #Loop through tournament matchups to identify all possible alternative matchups based on tournament pairings
+    for(i in unique(tournamentframe$tournamentset)){
+
+      #Initialize alternativelist
+      looplist <- list()
+
+      #Loop through all alternatives in each source question for this tournament matchup
+      for(j in unique(tournamentframe$sourcequestion[which(tournamentframe$tournamentset == i)])){
+
+        looplist[[(length(looplist) + 1)]] <- unique(matchupframe$matrixrowid[which(matchupframe$questionid == j)])
+        #browser()
+
+      }
+
+      #Create matrix of all possible matchups for the current tournament question
+      tempframe <- expand.grid(looplist)
+
+      #Enter all new items into matchupframe
+      for(j in 1:nrow(tempframe)){
+
+        addframe <- data.frame(matrixrowid = c(t(tempframe[j,])),
+                               questionid = rep(i, times = ncol(tempframe)),
+                               uniquesetid = rep(max(matchupframe$uniquesetid) + 1, times = ncol(tempframe)))
+
+        matchupframe <- rbind.data.frame(matchupframe, addframe)
+
+      }
+
+    }
+
+    #Initialize variable for source question in matchupframe (0 indicates a non-tournament question)
+    matchupframe$sourcequestion <- 0
+
+    #Loop through each tournament set
+    for(i in unique(tournamentframe$tournamentset)){
+
+      #Loop through each row tied to the current tournament set
+      for(j in which(matchupframe$questionid == i)){
+
+        #Find the corresponding source question for the current row of the matchupframe
+        matchupframe$sourcequestion[j] <- unique(matchupframe$questionid[((matchupframe$matrixrowid == matchupframe$matrixrowid[j]) &
+                                   (matchupframe$questionid %in% tournamentframe$sourcequestion[tournamentframe$tournamentset == i]))])
+
+      }
+
+
+    }
+
+  }
+
+  #browser()
 
   #Convert determinant list to vector
   det_ref_list <- unlist(det_ref_list)
@@ -839,7 +921,67 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     #Calculate initial d-efficiency for both model types
     if(length(choiceeqs) > 0){
 
+      if(ChoiceTournamentAlts > 0){
+      #################New Tournament code basis here. Will eventually be able to use for all functions
+      #Intialize lists for the information matrix for each question
+      choiceefflist <- list()
+      occurprobs <- list()
+      winprobs <- list()
+
+      #Calculate the information matrix for each question pair and place them in a list
+      choiceefflist <- lapply(unique(matchupframe$uniquesetid), function(y) d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[matchupframe$matrixrowid[matchupframe$uniquesetid == y]],2:ncol(x)]), paramestimates = priors[choiceeqs]))
+
+      #Extract the win probabilites from each matchup and calculate resulting occurrence probabilities for each matchup
+      winprobs[choiceeqs] <- lapply(choiceeqs, function(x) c(sapply(choiceefflist, "[[", "p_set", x)))
+
+      #Calculate full occurrence probability vector:
+      occurprobs[choiceeqs] <- lapply(choiceeqs, function(x) matchupprobs(matchupframe = matchupframe, winprobs = winprobs[[x]])$occurprobs)
+
+      #Calculate d-efficiency by multiplying info mat for each possible matchup with chance of that matchup happening
+      eff_vect[choiceeqs] <- sapply(choiceeqs, function(x) det(Reduce("+", Map('*', lapply(choiceefflist, "[[", "info_mat", x), occurprobs[[x]][duplicated(matchupframe$uniquesetid)])))^(1/ncol(candexpand[[x]]))/det_ref_list[x])
+}
+
+      ###Left off Here 10-24-2017 after functionalizing tournament choice d-efficiency calcs as shown above. Implement on remainder of d-efficiency calculation locations to complete
       #browser()
+
+#       for(k in choiceeqs){
+#
+#         #Extract win probabilitiy vector
+#         winprobs[[k]] <-c(sapply(efflist, "[[", "p_set", k))
+#
+#         #Calculate full occurrence probability vector:
+#         occurprobs[[k]] <- matchupprobs(matchupframe = matchupframe, winprobs = winprobs[[k]])$occurprobs
+#
+# #         occurprobs[[k]] <- rep(1, times = nrow(matchupframe))
+# #         ###Moved into custom function. Delete once fuction is validated
+# #
+# #         #Loop through all tournament questions
+# #         for(i in unique(tournamentframe$tournamentset)){
+# #         #Loop through all rows for this tournament set in matchup frame to calculate the probability of each alternative making it to this round of the tournament
+# #         for(j in which(matchupframe$questionid == i)){
+# #
+# #         temprows <- which((matchupframe$matrixrowid == matchupframe$matrixrowid[j]) &
+# #                             (matchupframe$questionid == matchupframe$sourcequestion[j]))
+# #
+# #         occurprobs[[k]][j] <- sum(occurprobs[[k]][temprows]*winprobs[[k]][temprows])
+# #
+# #         }
+# #           #Multiply chance of each alternative making it to this question to get probability of specific matchup occuring
+# #           for(j in unique(matchupframe$uniquesetid[matchupframe$questionid == i])){
+# #
+# #             occurprobs[[k]][matchupframe$uniquesetid == j] <- prod(occurprobs[[k]][matchupframe$uniquesetid == j])
+# #
+# #
+# #           }
+# #         }
+#
+#         #Calculate starting d-efficiency by multiplying info mat for each possible matchup with chance of that matchup happening
+#         eff_vect[k] <- det(Reduce("+", Map('*', lapply(efflist, "[[", "info_mat", k), occurprobs[[k]][duplicated(matchupframe$uniquesetid)])))^(1/ncol(candexpand[[k]]))/det_ref_list[k]
+#       }
+
+      ##################################################################################################
+
+
       #Calculate choice d-efficiency
       if(Optimality == "D"){
       eff_vect[choiceeqs] <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect)/det_ref_list[choiceeqs]
@@ -899,6 +1041,20 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
           #Calculate p_var for all of design except current question being updated for D-Util optimization
           p_var_static[choiceeqs] <- unlist(temp_eff[3,])
 
+          #If a choice tournament is being used, calculate the efficiencies for that matrix
+          if(ChoiceTournamentAlts > 1){
+
+            #Identify all question numbers and potential tournament matchups impacted by a point change:
+            tourneyupdates <- unique(matchupframe$uniquesetid[matchupframe$matrixrowid == i])
+
+            #Calculate information matrix for all of design and all tournament questions
+            choiceefflist <- lapply(unique(matchupframe$uniquesetid), function(y) d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[matchupframe$matrixrowid[matchupframe$uniquesetid == y]],2:ncol(x)]), paramestimates = priors[choiceeqs]))
+
+            #browser()
+
+}
+
+          #################Left off here after showing all questions to be updated can be calculated using loop above
 
         }
 
@@ -916,6 +1072,26 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
 
           #Calculate D-efficiencies for ModelMatReal with new temporary point
           if(length(choiceeqs) > 0){
+
+            #D-efficiency for choice tournament
+            if(ChoiceTournamentAlts > 0){
+
+              #Calculate the information matrix for the updated question pairs
+              choiceefflist[tourneyupdates] <- lapply(tourneyupdates, function(y) d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[matchupframe$matrixrowid[matchupframe$uniquesetid == y]],2:ncol(x)]), paramestimates = priors[choiceeqs]))
+
+              #Extract the win probabilites from each matchup and calculate resulting occurrence probabilities for each matchup
+              winprobs[choiceeqs] <- lapply(choiceeqs, function(x) c(sapply(choiceefflist, "[[", "p_set", x)))
+
+              #browser()
+
+              ##OLD CODE## #Calculate full occurrence probability vector:
+              ##occurprobs[choiceeqs] <- lapply(choiceeqs, function(x) matchupprobs(matchupframe = matchupframe, winprobs = winprobs[[x]])$occurprobs)
+              #Calculate only updated occurrences:
+              occurprobs[choiceeqs] <- lapply(choiceeqs, function(x) matchupprobs(matchupframe = matchupframe, winprobs = winprobs[[x]], updatevect = unique(matchupframe$questionid[(matchupframe$uniquesetid %in% tourneyupdates & matchupframe$sourcequestion > 0)]), occurprobs = occurprobs[[x]])$occurprobs)
+
+              #Calculate d-efficiency by multiplying info mat for each possible matchup with chance of that matchup happening
+              eff_vect[choiceeqs] <- sapply(choiceeqs, function(x) det(Reduce("+", Map('*', lapply(choiceefflist, "[[", "info_mat", x), occurprobs[[x]][duplicated(matchupframe$uniquesetid)])))^(1/ncol(candexpand[[x]]))/det_ref_list[x])
+            }
 
             #Update d-efficiency with new point (must send entire alternative set for this question)
             #browser()
@@ -986,11 +1162,9 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
     if(length(choiceeqs) > 0){
 
       #Calculate final model
-
       temp_eff <- d_efficiency_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind,2:ncol(x)]), paramestimates = priors[choiceeqs], altvect = altvect, returninfomat = TRUE)
 
       #Calculate final d-efficiency for D-efficiency model
-
       if(Optimality == "D"){
 
         #Extract d-efficiency
@@ -1020,7 +1194,31 @@ MultipleModelOptimize <- function(base_input_range, formulalist, questions, alts
       additionaldiags$probvect[choiceeqs] <- temp_eff[4,]
       additionaldiags$p_var[choiceeqs] <- unlist(temp_eff[3,])
       additionaldiags$p_opt[choiceeqs] <- unlist(temp_eff[3,])/p_var_ref
-    }
+
+      #Calculate final D-efficiency for choice tournament and modify above items where appropriate
+      if(ChoiceTournamentAlts > 0){
+
+        #Calculate the information matrix for the updated question pairs
+        choiceefflist <- lapply(unique(matchupframe$uniquesetid), function(y) d_efficiency_update_vect(CurrentMatrix = lapply(candexpand[choiceeqs], function(x, rowind = rownums) x[rowind[matchupframe$matrixrowid[matchupframe$uniquesetid == y]],2:ncol(x)]), paramestimates = priors[choiceeqs]))
+
+        #Extract the win probabilites from each matchup and calculate resulting occurrence probabilities for each matchup
+        winprobs[choiceeqs] <- lapply(choiceeqs, function(x) c(sapply(choiceefflist, "[[", "p_set", x)))
+
+        #Calculate full occurrence probability vector:
+        occurprobs[choiceeqs] <- lapply(choiceeqs, function(x) matchupprobs(matchupframe = matchupframe, winprobs = winprobs[[x]])$occurprobs)
+
+        #Calculate d-efficiency by multiplying info mat for each possible matchup with chance of that matchup happening
+        eff_vect_final[choiceeqs] <- sapply(choiceeqs, function(x) det(Reduce("+", Map('*', lapply(choiceefflist, "[[", "info_mat", x), occurprobs[[x]][duplicated(matchupframe$uniquesetid)])))^(1/ncol(candexpand[[x]])))
+
+        #Scale to d-optimality
+        opt_vect_final[choiceeqs] <- unlist(eff_vect_final[choiceeqs])/det_ref_list[choiceeqs]
+
+        #Calculate final covlist
+        cov_vect_final[choiceeqs] <- lapply(lapply(choiceeqs, function(x) Reduce("+", Map('*', lapply(choiceefflist, "[[", "info_mat", x), occurprobs[[x]][duplicated(matchupframe$uniquesetid)]))), function(x) tryCatch(solve(x), error = function(x) diag(x = Inf, ncol = 2, nrow = 2)))
+
+      }
+
+      }
 
     #Calculate final d-efficiency for linear models
     if(length(lineareqs) > 0){
